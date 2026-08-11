@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>BurgerCalc Pro 2.0 — Fundação</title>
+<style>
+:root{
+  --bg:#f4f7fb;--surface:#fff;--surface-2:#f8fafc;--text:#172033;--muted:#64748b;
+  --line:#e2e8f0;--primary:#7c3aed;--primary-2:#5b21b6;--success:#16a34a;
+  --warning:#d97706;--danger:#dc2626;--shadow:0 12px 30px rgba(15,23,42,.08);
+  --radius:18px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.app{min-height:100vh}
+.topbar{position:sticky;top:0;z-index:20;background:rgba(17,24,39,.96);color:#fff;backdrop-filter:blur(12px)}
+.topbar-inner{max-width:1280px;margin:auto;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:15px}
+.brand{display:flex;align-items:center;gap:11px}.brand-icon{font-size:28px}.brand h1{font-size:1.1rem}.brand span{display:block;color:#cbd5e1;font-size:.75rem}
+.top-actions{display:flex;gap:8px}
+.btn{border:0;border-radius:12px;padding:10px 14px;font-weight:700;transition:.2s}
+.btn:hover{transform:translateY(-1px)}.btn-primary{background:var(--primary);color:#fff}.btn-dark{background:#334155;color:#fff}
+.btn-light{background:#fff;border:1px solid var(--line);color:var(--text)}.btn-danger{background:#fee2e2;color:#991b1b}
+.btn-success{background:#dcfce7;color:#166534}.btn-sm{padding:8px 10px;font-size:.86rem}
+.layout{max-width:1280px;margin:auto;display:grid;grid-template-columns:230px 1fr;min-height:calc(100vh - 65px)}
+.sidebar{padding:20px 14px;border-right:1px solid var(--line);background:#fff}
+.nav-btn{width:100%;display:flex;align-items:center;gap:10px;padding:12px;border:0;background:transparent;border-radius:12px;text-align:left;color:#475569;font-weight:650;margin-bottom:5px}
+.nav-btn.active,.nav-btn:hover{background:#f3e8ff;color:var(--primary-2)}
+.main{padding:24px;min-width:0}
+.page{display:none}.page.active{display:block}
+.page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:15px;margin-bottom:20px}
+.page-head h2{font-size:1.55rem}.page-head p{color:var(--muted);margin-top:4px}
+.grid{display:grid;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.stat{position:relative;overflow:hidden}.stat .label{font-size:.82rem;color:var(--muted)}.stat .value{font-size:1.55rem;font-weight:800;margin-top:7px}.stat .icon{position:absolute;right:16px;top:15px;font-size:26px}
+.two{grid-template-columns:1fr 1fr}
+.bento{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-areas:"hero hero ing prod" "hero hero cost cost" "list list list actions";gap:16px;margin-bottom:18px}
+.bento .card{margin:0}
+.bento-tile{transition:transform .2s ease,box-shadow .2s ease}
+.bento-tile:hover{transform:translateY(-3px);box-shadow:0 16px 34px rgba(15,23,42,.12)}
+.b-hero{grid-area:hero;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(155deg,#faf5ff,#fff)}
+.b-hero .label{font-size:.82rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.b-hero .value{font-size:2.7rem;font-weight:800;line-height:1;margin-top:8px}
+.b-hero .hero-sub{font-size:.82rem;color:var(--muted);margin-top:6px}
+.bento-bars{display:flex;align-items:flex-end;gap:5px;height:52px;margin-top:16px}
+.bento-bars .bar{flex:1;border-radius:6px 6px 2px 2px;background:var(--line);min-height:6px}
+.bento-bars .bar.good{background:var(--success)}.bento-bars .bar.ok{background:var(--warning)}.bento-bars .bar.bad{background:var(--danger)}
+.b-ing{grid-area:ing}.b-prod{grid-area:prod}.b-cost{grid-area:cost}
+.b-list{grid-area:list;display:flex;flex-direction:column}.b-list .list{max-height:400px;overflow:auto}
+.b-actions{grid-area:actions}
+.actions-col{flex-direction:column}.actions-col .btn{width:100%}
+.btn:focus-visible,.nav-btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+@media(prefers-reduced-motion:no-preference){
+.bento-tile{animation:bentoIn .45s ease backwards}
+.bento-tile:nth-child(1){animation-delay:.02s}.bento-tile:nth-child(2){animation-delay:.08s}.bento-tile:nth-child(3){animation-delay:.14s}
+.bento-tile:nth-child(4){animation-delay:.2s}.bento-tile:nth-child(5){animation-delay:.26s}.bento-tile:nth-child(6){animation-delay:.32s}
+@keyframes bentoIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+}
+.section-title{font-size:1rem;font-weight:800;margin-bottom:15px}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}
+label{font-size:.82rem;font-weight:700;color:#475569}
+input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:11px;background:#fff;color:var(--text);outline:none}
+input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}
+.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse;min-width:650px}.table th,.table td{text-align:left;padding:12px 9px;border-bottom:1px solid var(--line);font-size:.88rem}.table th{color:var(--muted);font-size:.76rem;text-transform:uppercase}
+.badge{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:800;background:#f1f5f9;color:#475569}
+.money{font-weight:800}.positive{color:var(--success)}.negative{color:var(--danger)}.muted{color:var(--muted)}
+.search{max-width:320px}
+.empty{text-align:center;padding:35px;color:var(--muted)}
+.list{display:grid;gap:10px}.list-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px}
+.list-main{min-width:0}.list-main strong{display:block}.list-main small{color:var(--muted)}
+.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:50;padding:20px;align-items:center;justify-content:center}
+.modal-backdrop.open{display:flex}.modal{width:min(620px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:20px;padding:22px}
+.modal-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:15px}.close{border:0;background:#f1f5f9;border-radius:10px;padding:8px}
+.toast{position:fixed;right:20px;bottom:20px;z-index:80;background:#111827;color:#fff;padding:13px 16px;border-radius:12px;box-shadow:var(--shadow);display:none;max-width:340px}.toast.show{display:block}
+.price-box{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:15px}.price-box div{background:#f8fafc;border-radius:13px;padding:14px}.price-box b{display:block;font-size:1.15rem;margin-top:4px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{position:sticky;top:65px;z-index:10;overflow:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px}.sidebar nav{display:flex;gap:5px;min-width:max-content}.nav-btn{width:auto;margin:0}.two{grid-template-columns:1fr}.bento{grid-template-columns:1fr;grid-template-areas:"hero" "ing" "prod" "cost" "list" "actions"}}
+@media(max-width:600px){.main{padding:14px}.topbar-inner{padding:12px 14px}.brand h1{font-size:1rem}.brand span{display:none}.top-actions .btn{font-size:0;padding:9px}.top-actions .btn::before{font-size:18px}.btn-export::before{content:"💾"}.btn-restore::before{content:"↩️"}.form-grid{grid-template-columns:1fr}.page-head{flex-direction:column}.search{max-width:none}.price-box{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><div class="brand-icon">🍔</div><div><h1>BurgerCalc Pro 2.0</h1><span>Fundação • custos e precificação</span></div></div>
+    <div class="top-actions"><button class="btn btn-dark btn-export" onclick="exportBackup()">Exportar</button><button class="btn btn-dark btn-restore" onclick="document.getElementById('importFile').click()">Restaurar</button><input id="importFile" type="file" accept=".json" hidden onchange="importBackup(event)"></div>
+  </div>
+</header>
+
+<div class="layout">
+<aside class="sidebar">
+<nav>
+<button class="nav-btn active" data-page="dashboard">🏠 Dashboard</button>
+<button class="nav-btn" data-page="ingredients">📦 Ingredientes</button>
+<button class="nav-btn" data-page="products">🍔 Produtos</button>
+<button class="nav-btn" data-page="pricing">💰 Precificação</button>
+<button class="nav-btn" data-page="settings">⚙️ Configurações</button>
+</nav>
+</aside>
+
+<main class="main">
+<section id="dashboard" class="page active">
+<div class="page-head"><div><h2>Visão geral</h2><p>Uma visão rápida dos seus custos e produtos.</p></div><button class="btn btn-primary" onclick="openProductModal()">＋ Novo produto</button></div>
+<div class="bento">
+<div class="card bento-tile b-hero"><span class="label">Margem média</span><div class="value" id="dashAvgMargin">0%</div><div class="hero-sub" id="dashMarginSub">Cadastre produtos para calcular</div><div class="bento-bars" id="dashMarginBars"></div></div>
+<div class="card stat bento-tile b-ing"><span class="label">Ingredientes</span><div class="value" id="dashIngredients">0</div><span class="icon">📦</span></div>
+<div class="card stat bento-tile b-prod"><span class="label">Produtos</span><div class="value" id="dashProducts">0</div><span class="icon">🍔</span></div>
+<div class="card stat bento-tile b-cost"><span class="label">Custo médio</span><div class="value" id="dashAvgCost">R$ 0,00</div><span class="icon">🧮</span></div>
+<div class="card bento-tile b-list"><div class="section-title">Produtos cadastrados</div><div id="dashProductList" class="list"></div></div>
+<div class="card bento-tile b-actions"><div class="section-title">Ações rápidas</div><div class="actions actions-col">
+<button class="btn btn-primary" onclick="showPage('ingredients')">＋ Ingrediente</button>
+<button class="btn btn-light" onclick="openProductModal()">＋ Produto</button>
+<button class="btn btn-light" onclick="showPage('pricing')">💰 Precificar</button>
+</div><div style="margin-top:20px"><small class="muted">Os dados desta versão ficam no navegador. Use o backup regularmente.</small></div></div>
+</div>
+</section>
+
+<section id="ingredients" class="page">
+<div class="page-head"><div><h2>Ingredientes</h2><p>Cadastre o que você compra e acompanhe o custo unitário.</p></div><button class="btn btn-primary" onclick="openIngredientModal()">＋ Novo ingrediente</button></div>
+<div class="card">
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:15px;flex-wrap:wrap"><div class="section-title" style="margin:0">Cadastro</div><input id="ingredientSearch" class="search" placeholder="🔎 Buscar ingrediente..." oninput="renderIngredients()"></div>
+<div id="ingredientsTable"></div>
+</div>
+</section>
+
+<section id="products" class="page">
+<div class="page-head"><div><h2>Produtos</h2><p>Monte várias receitas e veja o custo de cada produto.</p></div><button class="btn btn-primary" onclick="openProductModal()">＋ Novo produto</button></div>
+<div class="card"><div id="productsTable"></div></div>
+</section>
+
+<section id="pricing" class="page">
+<div class="page-head"><div><h2>Precificação</h2><p>Compare custo, preço de venda, margem e markup.</p></div></div>
+<div class="card">
+<div class="form-grid">
+<div class="field"><label>Produto</label><select id="pricingProduct" onchange="renderPricing()"></select></div>
+<div class="field"><label>Margem desejada (%)</label><input id="targetMargin" type="number" min="0" max="99.99" step="0.1" value="40" oninput="renderPricing()"></div>
+</div>
+<div id="pricingResult"></div>
+</div>
+</section>
+
+<section id="settings" class="page">
+<div class="page-head"><div><h2>Configurações</h2><p>Controle os dados locais do BurgerCalc Pro.</p></div></div>
+<div class="grid two">
+<div class="card"><div class="section-title">Dados</div><p class="muted">Faça backup antes de trocar de navegador ou limpar os dados do site.</p><div class="actions"><button class="btn btn-primary" onclick="exportBackup()">⬇️ Exportar backup</button><button class="btn btn-light" onclick="document.getElementById('importFile').click()">⬆️ Restaurar backup</button></div></div>
+<div class="card"><div class="section-title">Zona de segurança</div><p class="muted">Apaga todos os ingredientes e produtos deste navegador.</p><div class="actions"><button class="btn btn-danger" onclick="clearAllData()">🗑️ Apagar todos os dados</button></div></div>
+</div>
+</section>
+</main>
+</div>
+</div>
+
+<div id="modalBackdrop" class="modal-backdrop" onclick="backdropClose(event)">
+<div class="modal">
+<div class="modal-head"><h3 id="modalTitle"></h3><button class="close" onclick="closeModal()" aria-label="Fechar">✕</button></div>
+<div id="modalBody"></div>
+</div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const STORAGE_KEY='burgercalc_pro_v2';
+const VERSION=2;
+
+const defaultState={version:VERSION,ingredients:[],products:[]};
+let state=loadState();
+
+function loadState(){
+  try{
+    const raw=localStorage.getItem(STORAGE_KEY);
+    if(!raw) return structuredClone(defaultState);
+    const data=JSON.parse(raw);
+    return {
+      version:VERSION,
+      ingredients:Array.isArray(data.ingredients)?data.ingredients:[],
+      products:Array.isArray(data.products)?data.products:[]
+    };
+  }catch(e){console.error(e);return structuredClone(defaultState)}
+}
+function saveState(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderAll()}
+function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)}
+function money(v){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0)}
+function num(v){return Number(v)||0}
+function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.remove('show'),2400)}
+
+document.querySelectorAll('.nav-btn').forEach(btn=>btn.addEventListener('click',()=>showPage(btn.dataset.page)));
+function showPage(id){
+ document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+ document.getElementById(id).classList.add('active');
+ document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
+ if(id==='pricing') renderPricing();
+}
+
+function openModal(title,body){
+ document.getElementById('modalTitle').textContent=title;
+ document.getElementById('modalBody').innerHTML=body;
+ document.getElementById('modalBackdrop').classList.add('open');
+ const first=document.getElementById('modalBody').querySelector('input,select,textarea');
+ if(first)first.focus();
+}
+function closeModal(){document.getElementById('modalBackdrop').classList.remove('open')}
+function backdropClose(e){if(e.target.id==='modalBackdrop')closeModal()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('modalBackdrop').classList.contains('open'))closeModal()});
+
+function openIngredientModal(id=null){
+ const ing=id?state.ingredients.find(x=>x.id===id):null;
+ openModal(ing?'Editar ingrediente':'Novo ingrediente',`
+ <form onsubmit="submitIngredient(event,'${id||''}')">
+ <div class="form-grid">
+ <div class="field full"><label>Nome</label><input id="mName" required maxlength="80" value="${escapeHtml(ing?.name||'')}" placeholder="Ex.: Queijo mussarela"></div>
+ <div class="field"><label>Quantidade comprada</label><input id="mQty" type="number" min="0.0001" step="0.0001" required value="${ing?.quantity??''}"></div>
+ <div class="field"><label>Unidade</label><select id="mUnit">${['g','kg','ml','l','un'].map(u=>`<option ${ing?.unit===u?'selected':''}>${u}</option>`).join('')}</select></div>
+ <div class="field"><label>Preço pago (R$)</label><input id="mPrice" type="number" min="0" step="0.01" required value="${ing?.price??''}"></div>
+ <div class="field"><label>Categoria</label><input id="mCategory" maxlength="40" value="${escapeHtml(ing?.category||'Outros')}" placeholder="Ex.: Laticínios"></div>
+ </div>
+ <div class="actions"><button type="button" class="btn btn-light" onclick="closeModal()">Cancelar</button><button class="btn btn-primary">Salvar ingrediente</button></div>
+ </form>`);
+}
+function submitIngredient(e,id){
+ e.preventDefault();
+ const name=document.getElementById('mName').value.trim(), quantity=num(document.getElementById('mQty').value), price=Number(document.getElementById('mPrice').value);
+ if(!name)return toast('Informe o nome do ingrediente.');
+ if(quantity<=0)return toast('A quantidade deve ser maior que zero.');
+ if(price<0||Number.isNaN(price))return toast('Informe um preço válido.');
+ const data={name,quantity,unit:document.getElementById('mUnit').value,price,category:document.getElementById('mCategory').value.trim()||'Outros'};
+ data.pricePerUnit=price/quantity;
+ if(id){const i=state.ingredients.findIndex(x=>x.id===id);if(i>=0)state.ingredients[i]={...state.ingredients[i],...data}}
+ else state.ingredients.push({id:uid(),...data});
+ closeModal();saveState();toast(id?'Ingrediente atualizado.':'Ingrediente cadastrado.');
+}
+function deleteIngredient(id){
+ const ing=state.ingredients.find(x=>x.id===id); if(!ing)return;
+ if(state.products.some(p=>p.items.some(i=>i.ingredientId===id))){
+   if(!confirm(`"${ing.name}" está em uma ou mais receitas. Excluir também removerá esse ingrediente das receitas. Continuar?`))return;
+ }else if(!confirm(`Excluir "${ing.name}"?`))return;
+ state.products.forEach(p=>p.items=p.items.filter(i=>i.ingredientId!==id));
+ state.ingredients=state.ingredients.filter(x=>x.id!==id);
+ saveState();toast('Ingrediente excluído.');
+}
+function renderIngredients(){
+ const q=(document.getElementById('ingredientSearch')?.value||'').toLowerCase().trim();
+ const list=state.ingredients.filter(i=>(i.name+' '+i.category).toLowerCase().includes(q));
+ const el=document.getElementById('ingredientsTable');
+ if(!list.length){el.innerHTML='<div class="empty">Nenhum ingrediente encontrado.<br><br><button class="btn btn-primary" onclick="openIngredientModal()">Cadastrar ingrediente</button></div>';return}
+ el.innerHTML=`<div class="table-wrap"><table class="table"><thead><tr><th>Ingrediente</th><th>Categoria</th><th>Compra</th><th>Custo unitário</th><th>Ações</th></tr></thead><tbody>
+ ${list.map(i=>`<tr><td><strong>${escapeHtml(i.name)}</strong></td><td><span class="badge">${escapeHtml(i.category)}</span></td><td>${i.quantity} ${i.unit} • ${money(i.price)}</td><td class="money">${money(i.pricePerUnit)}/${i.unit}</td><td><button class="btn btn-light btn-sm" onclick="openIngredientModal('${i.id}')" aria-label="Editar ${escapeHtml(i.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteIngredient('${i.id}')" aria-label="Excluir ${escapeHtml(i.name)}">🗑️</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function ingredientCost(id,qty){
+ const ing=state.ingredients.find(i=>i.id===id);return ing?ing.pricePerUnit*num(qty):0;
+}
+function productCost(product){
+ return product.items.reduce((s,i)=>s+ingredientCost(i.ingredientId,i.quantity),0);
+}
+function productUnitCost(product){
+ const y=product.yield>0?product.yield:1;
+ return productCost(product)/y;
+}
+function productMargin(product){
+ const cost=productUnitCost(product),price=num(product.sellingPrice);return price>0?((price-cost)/price)*100:0;
+}
+function productMarkup(product){
+ const cost=productUnitCost(product),price=num(product.sellingPrice);return cost>0?((price-cost)/cost)*100:0;
+}
+
+function openProductModal(id=null){
+ const p=id?state.products.find(x=>x.id===id):null;
+ const rows=p?.items||[];
+ const options=state.ingredients.map(i=>`<option value="${i.id}">${escapeHtml(i.name)} — ${money(i.pricePerUnit)}/${i.unit}</option>`).join('');
+ openModal(p?'Editar produto':'Novo produto',`
+ <form onsubmit="submitProduct(event,'${id||''}')">
+ <div class="form-grid">
+ <div class="field full"><label>Nome do produto</label><input id="pName" required maxlength="80" value="${escapeHtml(p?.name||'')}" placeholder="Ex.: Hambúrguer Bacon"></div>
+ <div class="field"><label>Preço de venda (R$)</label><input id="pPrice" type="number" min="0" step="0.01" value="${p?.sellingPrice??''}" placeholder="Ex.: 15,00"></div>
+ <div class="field"><label>Rendimento da receita</label><input id="pYield" type="number" min="1" step="1" value="${p?.yield??1}"><small class="muted">Quantidade de unidades produzidas pela receita.</small></div>
+ </div>
+ <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+ <div class="section-title">Composição</div>
+ <div class="form-grid"><div class="field"><label>Ingrediente</label><select id="piIngredient">${options||'<option value="">Cadastre ingredientes primeiro</option>'}</select></div><div class="field"><label>Quantidade usada na receita</label><input id="piQty" type="number" min="0.0001" step="0.0001" placeholder="Ex.: 500"></div></div>
+ <div class="actions"><button type="button" class="btn btn-light" onclick="addModalItem()">＋ Adicionar à receita</button></div>
+ <div id="modalItems" class="list" style="margin-top:12px"></div>
+ <div class="actions"><button type="button" class="btn btn-light" onclick="closeModal()">Cancelar</button><button class="btn btn-primary">Salvar produto</button></div>
+ </form>`);
+ window.modalItems=rows.map(x=>({...x}));
+ renderModalItems();
+}
+function addModalItem(){
+ const ingredientId=document.getElementById('piIngredient').value, quantity=Number(document.getElementById('piQty').value);
+ if(!ingredientId)return toast('Selecione um ingrediente.');
+ if(quantity<=0)return toast('Informe uma quantidade válida.');
+ const existing=window.modalItems.find(x=>x.ingredientId===ingredientId);
+ if(existing)existing.quantity+=quantity;else window.modalItems.push({ingredientId,quantity});
+ document.getElementById('piQty').value='';renderModalItems();
+}
+function renderModalItems(){
+ const el=document.getElementById('modalItems');if(!el)return;
+ if(!window.modalItems.length){el.innerHTML='<div class="empty" style="padding:18px">Nenhum ingrediente na receita.</div>';return}
+ el.innerHTML=window.modalItems.map((x,n)=>{const i=state.ingredients.find(y=>y.id===x.ingredientId);return i?`<div class="list-item"><div class="list-main"><strong>${escapeHtml(i.name)}</strong><small>${x.quantity} ${i.unit} • ${money(ingredientCost(i.id,x.quantity))}</small></div><button type="button" class="btn btn-danger btn-sm" onclick="removeModalItem(${n})" aria-label="Remover ${escapeHtml(i.name)} da receita">🗑️</button></div>`:''}).join('');
+}
+function removeModalItem(n){window.modalItems.splice(n,1);renderModalItems()}
+function submitProduct(e,id){
+ e.preventDefault();
+ const name=document.getElementById('pName').value.trim(), sellingPrice=Number(document.getElementById('pPrice').value||0), yieldQty=Number(document.getElementById('pYield').value||0);
+ if(!name)return toast('Informe o nome do produto.');
+ if(yieldQty<1)return toast('O rendimento deve ser pelo menos 1 unidade.');
+ if(sellingPrice<0||Number.isNaN(sellingPrice))return toast('Informe um preço válido.');
+ if(!window.modalItems.length)return toast('Adicione pelo menos um ingrediente.');
+ const data={name,sellingPrice,yield:yieldQty,items:window.modalItems.map(x=>({...x}))};
+ if(id){const idx=state.products.findIndex(x=>x.id===id);if(idx>=0)state.products[idx]={...state.products[idx],...data}}
+ else state.products.push({id:uid(),...data});
+ window.modalItems=[];closeModal();saveState();toast(id?'Produto atualizado.':'Produto criado.');
+}
+function deleteProduct(id){
+ const p=state.products.find(x=>x.id===id);if(!p)return;
+ if(!confirm(`Excluir "${p.name}"?`))return;
+ state.products=state.products.filter(x=>x.id!==id);saveState();toast('Produto excluído.');
+}
+function renderProducts(){
+ const el=document.getElementById('productsTable');
+ if(!state.products.length){el.innerHTML='<div class="empty">Nenhum produto cadastrado.<br><br><button class="btn btn-primary" onclick="openProductModal()">Criar primeiro produto</button></div>';return}
+ el.innerHTML=`<div class="table-wrap"><table class="table"><thead><tr><th>Produto</th><th>Custo unitário</th><th>Venda</th><th>Margem</th><th>Markup</th><th>Ações</th></tr></thead><tbody>
+ ${state.products.map(p=>{const cost=productUnitCost(p),margin=productMargin(p),markup=productMarkup(p);return `<tr><td><strong>${escapeHtml(p.name)}</strong><br><small class="muted">${p.items.length} ingrediente(s) • rendimento ${p.yield}</small></td><td class="money">${money(cost)}</td><td>${money(p.sellingPrice)}</td><td class="${margin>=30?'positive':margin>0?'':'negative'}">${margin.toFixed(1)}%</td><td>${markup.toFixed(1)}%</td><td><button class="btn btn-light btn-sm" onclick="openProductModal('${p.id}')" aria-label="Editar ${escapeHtml(p.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" aria-label="Excluir ${escapeHtml(p.name)}">🗑️</button></td></tr>`}).join('')}</tbody></table></div>`;
+}
+function renderPricing(){
+ const sel=document.getElementById('pricingProduct');if(!sel)return;
+ const old=sel.value;
+ sel.innerHTML=state.products.length?state.products.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join(''):'<option value="">Cadastre um produto</option>';
+ if(state.products.some(p=>p.id===old))sel.value=old;
+ const p=state.products.find(x=>x.id===sel.value),el=document.getElementById('pricingResult');
+ if(!p){el.innerHTML='<div class="empty">Crie um produto para começar a precificar.</div>';return}
+ const cost=productUnitCost(p),price=num(p.sellingPrice),margin=productMargin(p),markup=productMarkup(p);
+ const target=Math.min(99.99,Math.max(0,Number(document.getElementById('targetMargin').value)||0));
+ const recommended=target<100?cost/(1-target/100):0;
+ el.innerHTML=`<div class="price-box"><div>Custo unitário<b>${money(cost)}</b></div><div>Preço atual<b>${money(price)}</b></div><div>Lucro unitário<b class="${price-cost>=0?'positive':'negative'}">${money(price-cost)}</b></div><div>Margem atual<b>${margin.toFixed(1)}%</b></div><div>Markup<b>${markup.toFixed(1)}%</b></div><div>Preço recomendado<b>${money(recommended)}</b></div></div>
+ <div class="card" style="margin-top:15px;background:#faf5ff;border-color:#ddd6fe"><strong>Como chegamos ao preço recomendado?</strong><p class="muted" style="margin-top:6px">Custo unitário ÷ (1 − margem desejada). Esta V2.0 Fundação ainda não inclui taxas, impostos, embalagem, mão de obra ou perdas no cálculo.</p></div>`;
+}
+
+function renderDashboard(){
+ document.getElementById('dashIngredients').textContent=state.ingredients.length;
+ document.getElementById('dashProducts').textContent=state.products.length;
+ const costs=state.products.map(p=>productUnitCost(p)).filter(Number.isFinite);
+ document.getElementById('dashAvgCost').textContent=money(costs.length?costs.reduce((a,b)=>a+b,0)/costs.length:0);
+ const margins=state.products.map(p=>({name:p.name,margin:productMargin(p)})).filter(x=>Number.isFinite(x.margin));
+ const avgMargin=margins.length?margins.reduce((a,b)=>a+b.margin,0)/margins.length:0;
+ document.getElementById('dashAvgMargin').textContent=avgMargin.toFixed(1)+'%';
+ document.getElementById('dashMarginSub').textContent=margins.length?`Baseado em ${margins.length} produto(s)`:'Cadastre produtos para calcular';
+ const barsEl=document.getElementById('dashMarginBars');
+ if(!margins.length){barsEl.innerHTML=''}
+ else{
+  const shown=margins.slice(0,8);
+  const scale=Math.max(60,...shown.map(x=>Math.abs(x.margin)));
+  barsEl.innerHTML=shown.map(x=>{
+   const h=Math.max(6,Math.min(100,(Math.abs(x.margin)/scale)*100));
+   const cls=x.margin>=30?'good':x.margin>0?'ok':'bad';
+   return `<div class="bar ${cls}" style="height:${h}%" title="${escapeHtml(x.name)}: ${x.margin.toFixed(1)}%"></div>`;
+  }).join('');
+ }
+ const el=document.getElementById('dashProductList');
+ if(!state.products.length){el.innerHTML='<div class="empty">Nenhum produto cadastrado.</div>';return}
+ el.innerHTML=state.products.slice(0,8).map(p=>{const c=productUnitCost(p),m=productMargin(p);return `<div class="list-item"><div class="list-main"><strong>${escapeHtml(p.name)}</strong><small>Custo ${money(c)} • Venda ${money(p.sellingPrice)}</small></div><span class="badge">${m.toFixed(1)}% margem</span></div>`}).join('');
+}
+function renderAll(){renderIngredients();renderProducts();renderPricing();renderDashboard()}
+
+function exportBackup(){
+ const blob=new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`burgercalc-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);toast('Backup exportado.');
+}
+function sanitizeIngredient(raw){
+ const name=String(raw?.name||'').trim();
+ const quantity=Number(raw?.quantity);
+ const price=Number(raw?.price);
+ const unit=['g','kg','ml','l','un'].includes(raw?.unit)?raw.unit:'un';
+ if(!name||!(quantity>0)||Number.isNaN(price)||price<0)return null;
+ return {id:typeof raw.id==='string'&&raw.id?raw.id:uid(),name,quantity,unit,price,category:String(raw?.category||'Outros').trim()||'Outros',pricePerUnit:price/quantity};
+}
+function sanitizeProduct(raw,validIngredientIds){
+ const name=String(raw?.name||'').trim();
+ const sellingPrice=Number(raw?.sellingPrice);
+ let yieldQty=Number(raw?.yield);
+ if(!(yieldQty>=1))yieldQty=1;
+ if(!name||Number.isNaN(sellingPrice)||sellingPrice<0)return null;
+ const items=Array.isArray(raw?.items)?raw.items.filter(i=>i&&validIngredientIds.has(i.ingredientId)&&Number(i.quantity)>0).map(i=>({ingredientId:i.ingredientId,quantity:Number(i.quantity)})):[];
+ return {id:typeof raw.id==='string'&&raw.id?raw.id:uid(),name,sellingPrice,yield:yieldQty,items};
+}
+function importBackup(e){
+ const file=e.target.files[0];if(!file)return;
+ const reader=new FileReader();
+ reader.onload=()=>{
+  try{
+   const data=JSON.parse(reader.result);
+   if(!Array.isArray(data.ingredients)||!Array.isArray(data.products))throw new Error('formato inválido');
+   if(data.version&&data.version>VERSION){
+    if(!confirm('Este backup parece ter sido feito em uma versão mais nova do BurgerCalc Pro e pode não ser totalmente compatível. Restaurar mesmo assim?'))return;
+   }
+   const ingredients=data.ingredients.map(sanitizeIngredient).filter(Boolean);
+   const validIds=new Set(ingredients.map(i=>i.id));
+   const products=data.products.map(p=>sanitizeProduct(p,validIds)).filter(Boolean);
+   const skippedIngredients=data.ingredients.length-ingredients.length;
+   const skippedProducts=data.products.length-products.length;
+   const warning=skippedIngredients||skippedProducts?` ${skippedIngredients} ingrediente(s) e ${skippedProducts} produto(s) inválidos serão ignorados.`:'';
+   if(!confirm(`Restaurar este backup substituirá os dados atuais.${warning} Continuar?`))return;
+   state={version:VERSION,ingredients,products};saveState();
+   toast(warning?'Backup restaurado (alguns itens inválidos foram ignorados).':'Backup restaurado.');
+  }catch(err){toast('Arquivo de backup inválido.')}
+  e.target.value='';
+ };
+ reader.readAsText(file);
+}
+function clearAllData(){
+ if(!confirm('ATENÇÃO: todos os ingredientes e produtos serão apagados deste navegador. Continuar?'))return;
+ state=structuredClone(defaultState);saveState();toast('Dados apagados.');
+}
+
+renderAll();
+</script>
+</body>
+</html>
