@@ -121,14 +121,17 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 <section id="ingredients" class="page">
 <div class="page-head"><div><h2>Ingredientes</h2><p>Cadastre o que você compra e acompanhe o custo unitário.</p></div><button class="btn btn-primary" onclick="openIngredientModal()">＋ Novo ingrediente</button></div>
 <div class="card">
-<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:15px;flex-wrap:wrap"><div class="section-title" style="margin:0">Cadastro</div><input id="ingredientSearch" class="search" placeholder="🔎 Buscar ingrediente..." oninput="renderIngredients()"></div>
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:15px;flex-wrap:wrap"><div class="section-title" style="margin:0">Cadastro</div><input id="ingredientSearch" class="search" placeholder="🔎 Buscar ingrediente..." oninput="debouncedRenderIngredients()"></div>
 <div id="ingredientsTable"></div>
 </div>
 </section>
 
 <section id="products" class="page">
 <div class="page-head"><div><h2>Produtos</h2><p>Monte várias receitas e veja o custo de cada produto.</p></div><button class="btn btn-primary" onclick="openProductModal()">＋ Novo produto</button></div>
-<div class="card"><div id="productsTable"></div></div>
+<div class="card">
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:15px;flex-wrap:wrap"><div class="section-title" style="margin:0">Cadastro</div><input id="productSearch" class="search" placeholder="🔎 Buscar produto..." oninput="debouncedRenderProducts()"></div>
+<div id="productsTable"></div>
+</div>
 </section>
 
 <section id="pricing" class="page">
@@ -153,7 +156,7 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 </div>
 </div>
 
-<div id="modalBackdrop" class="modal-backdrop" onclick="backdropClose(event)">
+<div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle" onclick="backdropClose(event)">
 <div class="modal">
 <div class="modal-head"><h3 id="modalTitle"></h3><button class="close" onclick="closeModal()" aria-label="Fechar">✕</button></div>
 <div id="modalBody"></div>
@@ -167,6 +170,10 @@ const VERSION=2;
 
 const defaultState={version:VERSION,ingredients:[],products:[]};
 let state=loadState();
+let lastFocusedElement = null;           // para restaurar foco ao fechar modal
+let modalItemsMap = new Map();           // substitui window.modalItems: chave = id do produto ou 'new'
+let debounceTimer = null;
+let productDebounceTimer = null;
 
 function loadState(){
   try{
@@ -178,9 +185,19 @@ function loadState(){
       ingredients:Array.isArray(data.ingredients)?data.ingredients:[],
       products:Array.isArray(data.products)?data.products:[]
     };
-  }catch(e){console.error(e);return structuredClone(defaultState)}
+  }catch(e){console.error(e); return JSON.parse(JSON.stringify(defaultState));}
 }
-function saveState(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderAll()}
+
+function saveState(){
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderAll();
+  } catch (e) {
+    toast('Erro ao salvar dados. O armazenamento local pode estar cheio ou indisponível.');
+    console.error(e);
+  }
+}
+
 function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)}
 function money(v){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0)}
 function num(v){return Number(v)||0}
@@ -196,16 +213,27 @@ function showPage(id){
 }
 
 function openModal(title,body){
- document.getElementById('modalTitle').textContent=title;
- document.getElementById('modalBody').innerHTML=body;
- document.getElementById('modalBackdrop').classList.add('open');
- const first=document.getElementById('modalBody').querySelector('input,select,textarea');
- if(first)first.focus();
+  lastFocusedElement = document.activeElement;
+  document.getElementById('modalTitle').textContent=title;
+  document.getElementById('modalBody').innerHTML=body;
+  const backdrop = document.getElementById('modalBackdrop');
+  backdrop.classList.add('open');
+  // atualiza aria-labelledby para apontar para o título
+  backdrop.setAttribute('aria-labelledby', 'modalTitle');
+  const first=document.getElementById('modalBody').querySelector('input,select,textarea');
+  if(first)first.focus();
 }
-function closeModal(){document.getElementById('modalBackdrop').classList.remove('open')}
+function closeModal(){
+  document.getElementById('modalBackdrop').classList.remove('open');
+  if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+    lastFocusedElement.focus();
+    lastFocusedElement = null;
+  }
+}
 function backdropClose(e){if(e.target.id==='modalBackdrop')closeModal()}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('modalBackdrop').classList.contains('open'))closeModal()});
 
+/* ========== Ingredientes ========== */
 function openIngredientModal(id=null){
  const ing=id?state.ingredients.find(x=>x.id===id):null;
  openModal(ing?'Editar ingrediente':'Novo ingrediente',`
@@ -217,7 +245,7 @@ function openIngredientModal(id=null){
  <div class="field"><label>Preço pago (R$)</label><input id="mPrice" type="number" min="0" step="0.01" required value="${ing?.price??''}"></div>
  <div class="field"><label>Categoria</label><input id="mCategory" maxlength="40" value="${escapeHtml(ing?.category||'Outros')}" placeholder="Ex.: Laticínios"></div>
  </div>
- <div class="actions"><button type="button" class="btn btn-light" onclick="closeModal()">Cancelar</button><button class="btn btn-primary">Salvar ingrediente</button></div>
+ <div class="actions"><button type="button" class="btn btn-light" onclick="closeModal()">Cancelar</button><button type="submit" class="btn btn-primary">Salvar ingrediente</button></div>
  </form>`);
 }
 function submitIngredient(e,id){
@@ -250,6 +278,13 @@ function renderIngredients(){
  ${list.map(i=>`<tr><td><strong>${escapeHtml(i.name)}</strong></td><td><span class="badge">${escapeHtml(i.category)}</span></td><td>${i.quantity} ${i.unit} • ${money(i.price)}</td><td class="money">${money(i.pricePerUnit)}/${i.unit}</td><td><button class="btn btn-light btn-sm" onclick="openIngredientModal('${i.id}')" aria-label="Editar ${escapeHtml(i.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteIngredient('${i.id}')" aria-label="Excluir ${escapeHtml(i.name)}">🗑️</button></td></tr>`).join('')}</tbody></table></div>`;
 }
 
+// Debounce para busca de ingredientes
+function debouncedRenderIngredients(){
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => renderIngredients(), 250);
+}
+
+/* ========== Produtos ========== */
 function ingredientCost(id,qty){
  const ing=state.ingredients.find(i=>i.id===id);return ing?ing.pricePerUnit*num(qty):0;
 }
@@ -268,10 +303,13 @@ function productMarkup(product){
 }
 
 function openProductModal(id=null){
- const p=id?state.products.find(x=>x.id===id):null;
- const rows=p?.items||[];
- const options=state.ingredients.map(i=>`<option value="${i.id}">${escapeHtml(i.name)} — ${money(i.pricePerUnit)}/${i.unit}</option>`).join('');
- openModal(p?'Editar produto':'Novo produto',`
+  const p = id ? state.products.find(x=>x.id===id) : null;
+  const productKey = id || 'new';   // chave para o Map
+  // inicializa itens do modal a partir do produto existente ou array vazio
+  modalItemsMap.set(productKey, p ? p.items.map(x=>({...x})) : []);
+  const rows = modalItemsMap.get(productKey);
+  const options=state.ingredients.map(i=>`<option value="${i.id}">${escapeHtml(i.name)} — ${money(i.pricePerUnit)}/${i.unit}</option>`).join('');
+  openModal(p?'Editar produto':'Novo produto',`
  <form onsubmit="submitProduct(event,'${id||''}')">
  <div class="form-grid">
  <div class="field full"><label>Nome do produto</label><input id="pName" required maxlength="80" value="${escapeHtml(p?.name||'')}" placeholder="Ex.: Hambúrguer Bacon"></div>
@@ -281,39 +319,77 @@ function openProductModal(id=null){
  <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
  <div class="section-title">Composição</div>
  <div class="form-grid"><div class="field"><label>Ingrediente</label><select id="piIngredient">${options||'<option value="">Cadastre ingredientes primeiro</option>'}</select></div><div class="field"><label>Quantidade usada na receita</label><input id="piQty" type="number" min="0.0001" step="0.0001" placeholder="Ex.: 500"></div></div>
- <div class="actions"><button type="button" class="btn btn-light" onclick="addModalItem()">＋ Adicionar à receita</button></div>
+ <div class="actions"><button type="button" class="btn btn-light" onclick="addModalItem('${productKey}')">＋ Adicionar à receita</button></div>
  <div id="modalItems" class="list" style="margin-top:12px"></div>
- <div class="actions"><button type="button" class="btn btn-light" onclick="closeModal()">Cancelar</button><button class="btn btn-primary">Salvar produto</button></div>
+ <div class="actions"><button type="button" class="btn btn-light" onclick="cancelProductModal('${productKey}')">Cancelar</button><button type="submit" class="btn btn-primary">Salvar produto</button></div>
  </form>`);
- window.modalItems=rows.map(x=>({...x}));
- renderModalItems();
+  // renderiza itens iniciais
+  renderModalItems(productKey);
 }
-function addModalItem(){
+
+function cancelProductModal(productKey){
+ modalItemsMap.delete(productKey);
+ closeModal();
+}
+
+function addModalItem(productKey){
  const ingredientId=document.getElementById('piIngredient').value, quantity=Number(document.getElementById('piQty').value);
  if(!ingredientId)return toast('Selecione um ingrediente.');
  if(quantity<=0)return toast('Informe uma quantidade válida.');
- const existing=window.modalItems.find(x=>x.ingredientId===ingredientId);
- if(existing)existing.quantity+=quantity;else window.modalItems.push({ingredientId,quantity});
- document.getElementById('piQty').value='';renderModalItems();
+ const items = modalItemsMap.get(productKey) || [];
+ const existing=items.find(x=>x.ingredientId===ingredientId);
+ if(existing)existing.quantity+=quantity;else items.push({ingredientId,quantity});
+ modalItemsMap.set(productKey, items);
+ document.getElementById('piQty').value='';
+ renderModalItems(productKey);
 }
-function renderModalItems(){
+
+function renderModalItems(productKey){
  const el=document.getElementById('modalItems');if(!el)return;
- if(!window.modalItems.length){el.innerHTML='<div class="empty" style="padding:18px">Nenhum ingrediente na receita.</div>';return}
- el.innerHTML=window.modalItems.map((x,n)=>{const i=state.ingredients.find(y=>y.id===x.ingredientId);return i?`<div class="list-item"><div class="list-main"><strong>${escapeHtml(i.name)}</strong><small>${x.quantity} ${i.unit} • ${money(ingredientCost(i.id,x.quantity))}</small></div><button type="button" class="btn btn-danger btn-sm" onclick="removeModalItem(${n})" aria-label="Remover ${escapeHtml(i.name)} da receita">🗑️</button></div>`:''}).join('');
+ const items = modalItemsMap.get(productKey) || [];
+ if(!items.length){el.innerHTML='<div class="empty" style="padding:18px">Nenhum ingrediente na receita.</div>';return}
+ el.innerHTML=items.map((x,n)=>{
+   const i=state.ingredients.find(y=>y.id===x.ingredientId);
+   return i?`<div class="list-item"><div class="list-main"><strong>${escapeHtml(i.name)}</strong><small>${x.quantity} ${i.unit} • ${money(ingredientCost(i.id,x.quantity))}</small></div><button type="button" class="btn btn-danger btn-sm" onclick="removeModalItem('${productKey}',${n})" aria-label="Remover ${escapeHtml(i.name)} da receita">🗑️</button></div>`:'';
+ }).join('');
 }
-function removeModalItem(n){window.modalItems.splice(n,1);renderModalItems()}
+
+function removeModalItem(productKey, n){
+  const items = modalItemsMap.get(productKey) || [];
+  items.splice(n,1);
+  modalItemsMap.set(productKey, items);
+  renderModalItems(productKey);
+}
+
 function submitProduct(e,id){
  e.preventDefault();
  const name=document.getElementById('pName').value.trim(), sellingPrice=Number(document.getElementById('pPrice').value||0), yieldQty=Number(document.getElementById('pYield').value||0);
  if(!name)return toast('Informe o nome do produto.');
  if(yieldQty<1)return toast('O rendimento deve ser pelo menos 1 unidade.');
  if(sellingPrice<0||Number.isNaN(sellingPrice))return toast('Informe um preço válido.');
- if(!window.modalItems.length)return toast('Adicione pelo menos um ingrediente.');
- const data={name,sellingPrice,yield:yieldQty,items:window.modalItems.map(x=>({...x}))};
+
+ const productKey = id || 'new';
+ let items = modalItemsMap.get(productKey) || [];
+ // verifica se algum ingrediente foi removido enquanto o modal estava aberto
+ const validIds = new Set(state.ingredients.map(i=>i.id));
+ const originalLength = items.length;
+ items = items.filter(item => validIds.has(item.ingredientId));
+ const removedCount = originalLength - items.length;
+ if (removedCount > 0) {
+   toast(removedCount === 1
+     ? '1 ingrediente não existe mais e foi removido da receita.'
+     : `${removedCount} ingredientes não existem mais e foram removidos da receita.`);
+ }
+ if (items.length === 0) return toast('Adicione pelo menos um ingrediente.');
+ modalItemsMap.set(productKey, items);
+
+ const data={name,sellingPrice,yield:yieldQty,items:items.map(x=>({...x}))};
  if(id){const idx=state.products.findIndex(x=>x.id===id);if(idx>=0)state.products[idx]={...state.products[idx],...data}}
  else state.products.push({id:uid(),...data});
- window.modalItems=[];closeModal();saveState();toast(id?'Produto atualizado.':'Produto criado.');
+ modalItemsMap.delete(productKey); // limpa o Map após salvar
+ closeModal();saveState();toast(id?'Produto atualizado.':'Produto criado.');
 }
+
 function deleteProduct(id){
  const p=state.products.find(x=>x.id===id);if(!p)return;
  if(!confirm(`Excluir "${p.name}"?`))return;
@@ -322,8 +398,17 @@ function deleteProduct(id){
 function renderProducts(){
  const el=document.getElementById('productsTable');
  if(!state.products.length){el.innerHTML='<div class="empty">Nenhum produto cadastrado.<br><br><button class="btn btn-primary" onclick="openProductModal()">Criar primeiro produto</button></div>';return}
+ const q=(document.getElementById('productSearch')?.value||'').toLowerCase().trim();
+ const list=state.products.filter(p=>p.name.toLowerCase().includes(q));
+ if(!list.length){el.innerHTML='<div class="empty">Nenhum produto encontrado.</div>';return}
  el.innerHTML=`<div class="table-wrap"><table class="table"><thead><tr><th>Produto</th><th>Custo unitário</th><th>Venda</th><th>Margem</th><th>Markup</th><th>Ações</th></tr></thead><tbody>
- ${state.products.map(p=>{const cost=productUnitCost(p),margin=productMargin(p),markup=productMarkup(p);return `<tr><td><strong>${escapeHtml(p.name)}</strong><br><small class="muted">${p.items.length} ingrediente(s) • rendimento ${p.yield}</small></td><td class="money">${money(cost)}</td><td>${money(p.sellingPrice)}</td><td class="${margin>=30?'positive':margin>0?'':'negative'}">${margin.toFixed(1)}%</td><td>${markup.toFixed(1)}%</td><td><button class="btn btn-light btn-sm" onclick="openProductModal('${p.id}')" aria-label="Editar ${escapeHtml(p.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" aria-label="Excluir ${escapeHtml(p.name)}">🗑️</button></td></tr>`}).join('')}</tbody></table></div>`;
+ ${list.map(p=>{const cost=productUnitCost(p),margin=productMargin(p),markup=productMarkup(p);return `<tr><td><strong>${escapeHtml(p.name)}</strong><br><small class="muted">${p.items.length} ingrediente(s) • rendimento ${p.yield}</small></td><td class="money">${money(cost)}</td><td>${money(p.sellingPrice)}</td><td class="${margin>=30?'positive':margin>0?'':'negative'}">${margin.toFixed(1)}%</td><td>${markup.toFixed(1)}%</td><td><button class="btn btn-light btn-sm" onclick="openProductModal('${p.id}')" aria-label="Editar ${escapeHtml(p.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" aria-label="Excluir ${escapeHtml(p.name)}">🗑️</button></td></tr>`}).join('')}</tbody></table></div>`;
+}
+
+// Debounce para busca de produtos
+function debouncedRenderProducts(){
+  clearTimeout(productDebounceTimer);
+  productDebounceTimer = setTimeout(() => renderProducts(), 250);
 }
 function renderPricing(){
  const sel=document.getElementById('pricingProduct');if(!sel)return;
@@ -365,6 +450,7 @@ function renderDashboard(){
 }
 function renderAll(){renderIngredients();renderProducts();renderPricing();renderDashboard()}
 
+/* ========== Backup / Restauração ========== */
 function exportBackup(){
  const blob=new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`burgercalc-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);toast('Backup exportado.');
@@ -412,9 +498,11 @@ function importBackup(e){
 }
 function clearAllData(){
  if(!confirm('ATENÇÃO: todos os ingredientes e produtos serão apagados deste navegador. Continuar?'))return;
- state=structuredClone(defaultState);saveState();toast('Dados apagados.');
+ state=JSON.parse(JSON.stringify(defaultState)); // clone seguro
+ saveState();toast('Dados apagados.');
 }
 
+// inicializa
 renderAll();
 </script>
 </body>
