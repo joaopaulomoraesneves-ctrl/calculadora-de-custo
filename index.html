@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#111827">
-<title>BurgerCalc Pro 2.0 — Fundação</title>
+<title>BurgerCalc Pro 2.0 — Fundação + Vendas</title>
 <style>
 :root{
   --bg:#f4f7fb;--surface:#fff;--surface-2:#f8fafc;--text:#172033;--muted:#64748b;
@@ -37,7 +37,7 @@ button{cursor:pointer}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
 .stat{position:relative;overflow:hidden}.stat .label{font-size:.82rem;color:var(--muted)}.stat .value{font-size:1.55rem;font-weight:800;margin-top:7px}.stat .icon{position:absolute;right:16px;top:15px;font-size:26px}
 .two{grid-template-columns:1fr 1fr}
-.bento{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-areas:"hero hero ing prod" "hero hero cost cost" "list list list actions";gap:16px;margin-bottom:18px}
+.bento{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-areas:"hero hero ing prod" "hero hero sales profit" "list list list actions";gap:16px;margin-bottom:18px}
 .bento .card{margin:0}
 .bento-tile{transition:transform .2s ease,box-shadow .2s ease}
 .bento-tile:hover{transform:translateY(-3px);box-shadow:0 16px 34px rgba(15,23,42,.12)}
@@ -45,10 +45,14 @@ button{cursor:pointer}
 .b-hero .label{font-size:.82rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em}
 .b-hero .value{font-size:2.7rem;font-weight:800;line-height:1;margin-top:8px}
 .b-hero .hero-sub{font-size:.82rem;color:var(--muted);margin-top:6px}
+.hero-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}
+.hero-stats div{background:#fff;border-radius:12px;padding:12px;text-align:center}
+.hero-stats small{display:block;font-size:.7rem;color:var(--muted);margin-bottom:4px}
+.hero-stats strong{font-size:1.1rem;font-weight:800}
 .bento-bars{display:flex;align-items:flex-end;gap:5px;height:52px;margin-top:16px}
 .bento-bars .bar{flex:1;border-radius:6px 6px 2px 2px;background:var(--line);min-height:6px}
 .bento-bars .bar.good{background:var(--success)}.bento-bars .bar.ok{background:var(--warning)}.bento-bars .bar.bad{background:var(--danger)}
-.b-ing{grid-area:ing}.b-prod{grid-area:prod}.b-cost{grid-area:cost}
+.b-ing{grid-area:ing}.b-prod{grid-area:prod}.b-sales{grid-area:sales}.b-profit{grid-area:profit}
 .b-list{grid-area:list;display:flex;flex-direction:column}.b-list .list{max-height:400px;overflow:auto}
 .b-actions{grid-area:actions}
 .actions-col{flex-direction:column}.actions-col .btn{width:100%}
@@ -77,7 +81,9 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 .modal-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:15px}.close{border:0;background:#f1f5f9;border-radius:10px;padding:8px}
 .toast{position:fixed;right:20px;bottom:20px;z-index:80;background:#111827;color:#fff;padding:13px 16px;border-radius:12px;box-shadow:var(--shadow);display:none;max-width:340px}.toast.show{display:block}
 .price-box{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:15px}.price-box div{background:#f8fafc;border-radius:13px;padding:14px}.price-box b{display:block;font-size:1.15rem;margin-top:4px}
-@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{position:sticky;top:65px;z-index:10;overflow:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px}.sidebar nav{display:flex;gap:5px;min-width:max-content}.nav-btn{width:auto;margin:0}.two{grid-template-columns:1fr}.bento{grid-template-columns:1fr;grid-template-areas:"hero" "ing" "prod" "cost" "list" "actions"}}
+.sale-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:15px 0}
+.sale-summary div{background:#f1f5f9;border-radius:12px;padding:12px;text-align:center}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{position:sticky;top:65px;z-index:10;overflow:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px}.sidebar nav{display:flex;gap:5px;min-width:max-content}.nav-btn{width:auto;margin:0}.two{grid-template-columns:1fr}.bento{grid-template-columns:1fr;grid-template-areas:"hero" "ing" "prod" "sales" "profit" "list" "actions"}.hero-stats{grid-template-columns:1fr}.price-box,.sale-summary{grid-template-columns:1fr}}
 @media(max-width:600px){.main{padding:14px}.topbar-inner{padding:12px 14px}.brand h1{font-size:1rem}.brand span{display:none}.top-actions .btn{font-size:0;padding:9px}.top-actions .btn::before{font-size:18px}.btn-export::before{content:"💾"}.btn-restore::before{content:"↩️"}.form-grid{grid-template-columns:1fr}.page-head{flex-direction:column}.search{max-width:none}.price-box{grid-template-columns:1fr}}
 </style>
 </head>
@@ -85,7 +91,7 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 <div class="app">
 <header class="topbar">
   <div class="topbar-inner">
-    <div class="brand"><div class="brand-icon">🍔</div><div><h1>BurgerCalc Pro 2.0</h1><span>Fundação • custos e precificação</span></div></div>
+    <div class="brand"><div class="brand-icon">🍔</div><div><h1>BurgerCalc Pro 2.0</h1><span>Fundação • custos, precificação e vendas</span></div></div>
     <div class="top-actions"><button class="btn btn-dark btn-export" onclick="exportBackup()">Exportar</button><button class="btn btn-dark btn-restore" onclick="document.getElementById('importFile').click()">Restaurar</button><input id="importFile" type="file" accept=".json" hidden onchange="importBackup(event)"></div>
   </div>
 </header>
@@ -97,24 +103,33 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 <button class="nav-btn" data-page="ingredients">📦 Ingredientes</button>
 <button class="nav-btn" data-page="products">🍔 Produtos</button>
 <button class="nav-btn" data-page="pricing">💰 Precificação</button>
+<button class="nav-btn" data-page="sales">💸 Vendas</button>
 <button class="nav-btn" data-page="settings">⚙️ Configurações</button>
 </nav>
 </aside>
 
 <main class="main">
 <section id="dashboard" class="page active">
-<div class="page-head"><div><h2>Visão geral</h2><p>Uma visão rápida dos seus custos e produtos.</p></div><button class="btn btn-primary" onclick="openProductModal()">＋ Novo produto</button></div>
+<div class="page-head"><div><h2>Visão geral</h2><p>Uma visão rápida dos seus custos, produtos e vendas.</p></div><button class="btn btn-primary" onclick="openProductModal()">＋ Novo produto</button></div>
 <div class="bento">
-<div class="card bento-tile b-hero"><span class="label">Margem média</span><div class="value" id="dashAvgMargin">0%</div><div class="hero-sub" id="dashMarginSub">Cadastre produtos para calcular</div><div class="bento-bars" id="dashMarginBars"></div></div>
+<div class="card bento-tile b-hero"><span class="label">Margem média</span><div class="value" id="dashAvgMargin">0%</div><div class="hero-sub" id="dashMarginSub">Cadastre produtos para calcular</div>
+<div class="hero-stats">
+  <div><small>Custo médio</small><strong id="dashAvgCost">R$ 0,00</strong></div>
+  <div><small>Vendas hoje</small><strong id="dashSalesToday">R$ 0,00</strong></div>
+  <div><small>Lucro hoje</small><strong id="dashProfitToday">R$ 0,00</strong></div>
+</div>
+<div class="bento-bars" id="dashMarginBars"></div></div>
 <div class="card stat bento-tile b-ing"><span class="label">Ingredientes</span><div class="value" id="dashIngredients">0</div><span class="icon">📦</span></div>
 <div class="card stat bento-tile b-prod"><span class="label">Produtos</span><div class="value" id="dashProducts">0</div><span class="icon">🍔</span></div>
-<div class="card stat bento-tile b-cost"><span class="label">Custo médio</span><div class="value" id="dashAvgCost">R$ 0,00</div><span class="icon">🧮</span></div>
+<div class="card stat bento-tile b-sales"><span class="label">Vendas hoje</span><div class="value" id="dashSales">0</div><span class="icon">🧾</span></div>
+<div class="card stat bento-tile b-profit"><span class="label">Lucro bruto hoje</span><div class="value" id="dashProfit">R$ 0,00</div><span class="icon">📈</span></div>
 <div class="card bento-tile b-list"><div class="section-title">Produtos cadastrados</div><div id="dashProductList" class="list"></div></div>
 <div class="card bento-tile b-actions"><div class="section-title">Ações rápidas</div><div class="actions actions-col">
 <button class="btn btn-primary" onclick="showPage('ingredients')">＋ Ingrediente</button>
 <button class="btn btn-light" onclick="openProductModal()">＋ Produto</button>
 <button class="btn btn-light" onclick="showPage('pricing')">💰 Precificar</button>
-</div><div style="margin-top:20px"><small class="muted">Os dados desta versão ficam no navegador. Use o backup regularmente.</small></div></div>
+<button class="btn btn-light" onclick="showPage('sales')">💸 Registrar venda</button>
+</div><div style="margin-top:20px"><small class="muted">Os dados ficam no navegador. Use o backup regularmente.</small></div></div>
 </div>
 </section>
 
@@ -145,6 +160,36 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 </div>
 </section>
 
+<section id="sales" class="page">
+<div class="page-head"><div><h2>Vendas</h2><p>Registre vendas realizadas e acompanhe o histórico.</p></div></div>
+<div class="card" style="margin-bottom:20px">
+<div class="section-title">Nova venda</div>
+<div class="form-grid">
+  <div class="field"><label>Produto</label><select id="saleProduct"></select></div>
+  <div class="field"><label>Quantidade</label><input id="saleQty" type="number" min="1" step="1" value="1"></div>
+</div>
+<div class="actions"><button class="btn btn-primary" onclick="addSaleItem()">＋ Adicionar item</button></div>
+<div id="saleItems" class="list" style="margin-top:12px"></div>
+<div class="sale-summary" id="saleTotals"></div>
+<div class="form-grid">
+  <div class="field"><label>Desconto (R$)</label><input id="saleDiscount" type="number" min="0" step="0.01" value="0" oninput="updateSaleTotals()"></div>
+  <div class="field"><label>Método de pagamento</label><select id="salePayment"><option>Dinheiro</option><option>Cartão de débito</option><option>Cartão de crédito</option><option>Pix</option><option>Vale-refeição</option><option>Outros</option></select></div>
+  <div class="field full"><label>Data e hora</label><input id="saleDate" type="datetime-local"></div>
+</div>
+<div class="actions"><button class="btn btn-success" onclick="finalizeSale()">✅ Finalizar venda</button></div>
+</div>
+<div class="card">
+<div class="section-title">Histórico de vendas</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:15px;align-items:center">
+  <input type="date" id="filterDateFrom" onchange="renderSalesHistory()" style="width:auto;flex:1;min-width:130px">
+  <span class="muted">até</span>
+  <input type="date" id="filterDateTo" onchange="renderSalesHistory()" style="width:auto;flex:1;min-width:130px">
+  <input id="saleSearch" class="search" placeholder="🔎 Buscar produto..." oninput="renderSalesHistory()" style="max-width:200px">
+</div>
+<div id="salesHistoryTable"></div>
+</div>
+</section>
+
 <section id="settings" class="page">
 <div class="page-head"><div><h2>Configurações</h2><p>Controle os dados locais do BurgerCalc Pro.</p></div></div>
 <div class="grid two">
@@ -168,12 +213,13 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 const STORAGE_KEY='burgercalc_pro_v2';
 const VERSION=2;
 
-const defaultState={version:VERSION,ingredients:[],products:[]};
+const defaultState={version:VERSION,ingredients:[],products:[],sales:[]};
 let state=loadState();
 let lastFocusedElement = null;
 let modalItemsMap = new Map();
 let debounceTimer = null;
 let productDebounceTimer = null;
+let pendingSaleItems = [];
 
 function isValidId(value){
   return typeof value==='string' && /^[A-Za-z0-9_-]+$/.test(value);
@@ -188,7 +234,8 @@ function loadState(){
     return {
       version:VERSION,
       ingredients:Array.isArray(data.ingredients)?data.ingredients:[],
-      products:Array.isArray(data.products)?data.products:[]
+      products:Array.isArray(data.products)?data.products:[],
+      sales:Array.isArray(data.sales)?data.sales:[]
     };
   }catch(e){console.error(e); return JSON.parse(JSON.stringify(defaultState));}
 }
@@ -217,6 +264,7 @@ function showPage(id){
  target.classList.add('active');
  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
  if(id==='pricing') renderPricing();
+ if(id==='sales') prepareSalePage();
 }
 
 function openModal(title,body){
@@ -284,7 +332,6 @@ function renderIngredients(){
  ${list.map(i=>`<tr><td><strong>${escapeHtml(i.name)}</strong></td><td><span class="badge">${escapeHtml(i.category)}</span></td><td>${i.quantity} ${i.unit} • ${money(i.price)}</td><td class="money">${money(i.pricePerUnit)}/${i.unit}</td><td><button class="btn btn-light btn-sm" onclick='openIngredientModal(${JSON.stringify(i.id)})' aria-label="Editar ${escapeHtml(i.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick='deleteIngredient(${JSON.stringify(i.id)})' aria-label="Excluir ${escapeHtml(i.name)}">🗑️</button></td></tr>`).join('')}</tbody></table></div>`;
 }
 
-// Debounce para busca de ingredientes
 function debouncedRenderIngredients(){
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => renderIngredients(), 250);
@@ -411,11 +458,11 @@ function renderProducts(){
  ${list.map(p=>{const cost=productUnitCost(p),margin=productMargin(p),markup=productMarkup(p);const markupLabel=markup===Infinity?'∞':`${markup.toFixed(1)}%`;return `<tr><td><strong>${escapeHtml(p.name)}</strong><br><small class="muted">${p.items.length} ingrediente(s) • rendimento ${p.yield}</small></td><td class="money">${money(cost)}</td><td>${money(p.sellingPrice)}</td><td class="${margin>=30?'positive':margin>0?'':'negative'}">${margin.toFixed(1)}%</td><td>${markupLabel}</td><td><button class="btn btn-light btn-sm" onclick='openProductModal(${JSON.stringify(p.id)})' aria-label="Editar ${escapeHtml(p.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick='deleteProduct(${JSON.stringify(p.id)})' aria-label="Excluir ${escapeHtml(p.name)}">🗑️</button></td></tr>`}).join('')}</tbody></table></div>`;
 }
 
-// Debounce para busca de produtos
 function debouncedRenderProducts(){
   clearTimeout(productDebounceTimer);
   productDebounceTimer = setTimeout(() => renderProducts(), 250);
 }
+
 function renderPricing(){
  const sel=document.getElementById('pricingProduct');if(!sel)return;
  const old=sel.value;
@@ -431,11 +478,157 @@ function renderPricing(){
  <div class="card" style="margin-top:15px;background:#faf5ff;border-color:#ddd6fe"><strong>Como chegamos ao preço recomendado?</strong><p class="muted" style="margin-top:6px">Custo unitário ÷ (1 − margem desejada). Esta V2.0 Fundação ainda não inclui taxas, impostos, embalagem, mão de obra ou perdas no cálculo.</p></div>`;
 }
 
+/* ========== Vendas ========== */
+function prepareSalePage(){
+  const productSelect = document.getElementById('saleProduct');
+  productSelect.innerHTML = state.products.length ? state.products.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ${money(p.sellingPrice)}</option>`).join('') : '<option value="">Cadastre produtos primeiro</option>';
+  document.getElementById('saleDate').value = new Date().toISOString().slice(0,16);
+  renderSaleItems();
+  renderSalesHistory();
+}
+
+function addSaleItem(){
+  const productId = document.getElementById('saleProduct').value;
+  const qty = parseInt(document.getElementById('saleQty').value, 10);
+  if(!productId) return toast('Selecione um produto.');
+  if(!qty || qty < 1) return toast('Quantidade inválida.');
+  const product = state.products.find(p => p.id === productId);
+  if(!product) return toast('Produto não encontrado.');
+  const existing = pendingSaleItems.find(item => item.productId === productId);
+  if(existing){
+    existing.quantity += qty;
+  } else {
+    pendingSaleItems.push({
+      productId: product.id,
+      productName: product.name,
+      quantity: qty,
+      unitPrice: product.sellingPrice,
+      unitCost: productUnitCost(product)
+    });
+  }
+  document.getElementById('saleQty').value = 1;
+  renderSaleItems();
+}
+
+function removeSaleItem(index){
+  pendingSaleItems.splice(index, 1);
+  renderSaleItems();
+}
+
+function renderSaleItems(){
+  const container = document.getElementById('saleItems');
+  if(!pendingSaleItems.length){
+    container.innerHTML = '<div class="empty">Nenhum item na venda.</div>';
+    updateSaleTotals();
+    return;
+  }
+  container.innerHTML = pendingSaleItems.map((item, idx) => {
+    const subtotal = item.quantity * item.unitPrice;
+    const costSubtotal = item.quantity * item.unitCost;
+    return `<div class="list-item">
+      <div class="list-main"><strong>${escapeHtml(item.productName)}</strong><small>Qtd: ${item.quantity} • Unit: ${money(item.unitPrice)} • Custo uni: ${money(item.unitCost)}</small></div>
+      <div style="text-align:right"><span class="money">${money(subtotal)}</span><br><small class="muted">Custo: ${money(costSubtotal)}</small></div>
+      <button class="btn btn-danger btn-sm" onclick="removeSaleItem(${idx})">🗑️</button>
+    </div>`;
+  }).join('');
+  updateSaleTotals();
+}
+
+function updateSaleTotals(){
+  const totalAmount = pendingSaleItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const totalCost = pendingSaleItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
+  const discount = Number(document.getElementById('saleDiscount')?.value) || 0;
+  const finalAmount = Math.max(0, totalAmount - discount);
+  const profit = finalAmount - totalCost;
+  document.getElementById('saleTotals').innerHTML = `
+    <div><small>Subtotal</small><strong>${money(totalAmount)}</strong></div>
+    <div><small>Desconto</small><strong>${money(discount)}</strong></div>
+    <div><small>Total</small><strong>${money(finalAmount)}</strong></div>
+    <div><small>Lucro estimado</small><strong class="${profit>=0?'positive':'negative'}">${money(profit)}</strong></div>
+  `;
+}
+
+function finalizeSale(){
+  if(!pendingSaleItems.length) return toast('Adicione ao menos um item.');
+  const discount = Number(document.getElementById('saleDiscount').value) || 0;
+  const payment = document.getElementById('salePayment').value;
+  const dateStr = document.getElementById('saleDate').value;
+  const date = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();
+
+  const totalAmount = pendingSaleItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  const totalCost = pendingSaleItems.reduce((s, i) => s + i.quantity * i.unitCost, 0);
+  const finalAmount = Math.max(0, totalAmount - discount);
+
+  const sale = {
+    id: uid(),
+    date,
+    items: pendingSaleItems.map(i => ({...i})),
+    totalAmount,
+    totalCost,
+    discount,
+    finalAmount,
+    payment
+  };
+  state.sales.push(sale);
+  pendingSaleItems = [];
+  document.getElementById('saleDiscount').value = 0;
+  document.getElementById('saleDate').value = new Date().toISOString().slice(0,16);
+  saveState();
+  toast('Venda registrada com sucesso!');
+  renderSaleItems();
+  renderSalesHistory();
+}
+
+function deleteSale(id){
+  if(!confirm('Excluir esta venda?')) return;
+  state.sales = state.sales.filter(s => s.id !== id);
+  saveState();
+  toast('Venda excluída.');
+}
+
+function renderSalesHistory(){
+  const from = document.getElementById('filterDateFrom')?.value;
+  const to = document.getElementById('filterDateTo')?.value;
+  const search = (document.getElementById('saleSearch')?.value || '').toLowerCase().trim();
+
+  let sales = [...state.sales].sort((a,b) => new Date(b.date) - new Date(a.date));
+  if(from) sales = sales.filter(s => s.date >= from);
+  if(to) sales = sales.filter(s => s.date <= to + 'T23:59:59');
+  if(search) sales = sales.filter(s => s.items.some(i => i.productName.toLowerCase().includes(search)));
+
+  const container = document.getElementById('salesHistoryTable');
+  if(!sales.length){
+    container.innerHTML = '<div class="empty">Nenhuma venda encontrada.</div>';
+    return;
+  }
+  container.innerHTML = `<div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Itens</th><th>Total</th><th>Lucro</th><th>Pagamento</th><th>Ações</th></tr></thead><tbody>
+    ${sales.map(s => {
+      const profit = s.finalAmount - s.totalCost;
+      return `<tr>
+        <td>${new Date(s.date).toLocaleString('pt-BR')}</td>
+        <td>${s.items.map(i => `${i.quantity}x ${escapeHtml(i.productName)}`).join(', ')}</td>
+        <td class="money">${money(s.finalAmount)}</td>
+        <td class="${profit>=0?'positive':'negative'}">${money(profit)}</td>
+        <td><span class="badge">${escapeHtml(s.payment)}</span></td>
+        <td><button class="btn btn-danger btn-sm" onclick="deleteSale('${s.id}')">🗑️</button></td>
+      </tr>`;
+    }).join('')}
+  </tbody></table></div>`;
+}
+
+function getSalesToday(){
+  const today = new Date().toISOString().slice(0,10);
+  return state.sales.filter(s => s.date.startsWith(today));
+}
+
+/* ========== Dashboard ========== */
 function renderDashboard(){
  document.getElementById('dashIngredients').textContent=state.ingredients.length;
  document.getElementById('dashProducts').textContent=state.products.length;
+
  const costs=state.products.map(p=>productUnitCost(p)).filter(Number.isFinite);
  document.getElementById('dashAvgCost').textContent=money(costs.length?costs.reduce((a,b)=>a+b,0)/costs.length:0);
+
  const margins=state.products.map(p=>({name:p.name,margin:productMargin(p)})).filter(x=>Number.isFinite(x.margin));
  const avgMargin=margins.length?margins.reduce((a,b)=>a+b.margin,0)/margins.length:0;
  document.getElementById('dashAvgMargin').textContent=avgMargin.toFixed(1)+'%';
@@ -451,11 +644,30 @@ function renderDashboard(){
    return `<div class="bar ${cls}" style="height:${h}%" title="${escapeHtml(x.name)}: ${x.margin.toFixed(1)}%"></div>`;
   }).join('');
  }
+
+ const todaySales = getSalesToday();
+ const totalToday = todaySales.reduce((s, sale) => s + sale.finalAmount, 0);
+ const profitToday = todaySales.reduce((s, sale) => s + (sale.finalAmount - sale.totalCost), 0);
+ document.getElementById('dashSales').textContent = todaySales.length;
+ document.getElementById('dashProfit').textContent = money(profitToday);
+ document.getElementById('dashSalesToday').textContent = money(totalToday);
+ document.getElementById('dashProfitToday').textContent = money(profitToday);
+
  const el=document.getElementById('dashProductList');
  if(!state.products.length){el.innerHTML='<div class="empty">Nenhum produto cadastrado.</div>';return}
  el.innerHTML=state.products.slice(0,8).map(p=>{const c=productUnitCost(p),m=productMargin(p);return `<div class="list-item"><div class="list-main"><strong>${escapeHtml(p.name)}</strong><small>Custo ${money(c)} • Venda ${money(p.sellingPrice)}</small></div><span class="badge">${m.toFixed(1)}% margem</span></div>`}).join('');
 }
-function renderAll(){renderIngredients();renderProducts();renderPricing();renderDashboard()}
+
+function renderAll(){
+ renderIngredients();
+ renderProducts();
+ renderPricing();
+ renderDashboard();
+ if(document.getElementById('sales').classList.contains('active')){
+   renderSalesHistory();
+   renderSaleItems();
+ }
+}
 
 /* ========== Backup / Restauração ========== */
 function exportBackup(){
@@ -479,7 +691,7 @@ function sanitizeProduct(raw,validIngredientIds){
  let yieldQty=Number(raw?.yield);
  if(!(yieldQty>=1))yieldQty=1;
  if(!name||Number.isNaN(sellingPrice)||sellingPrice<0)return null;
- const items=Array.isArray(raw?.items)?raw.items.filter(i=>i&&validIngredientIds.has(i.ingredientId)&&Number(i.quantity)>0).map(i=>({ingredientId:i.ingredientId,quantity:Number(i.quantity)})):[]; 
+ const items=Array.isArray(raw?.items)?raw.items.filter(i=>i&&validIngredientIds.has(i.ingredientId)&&Number(i.quantity)>0).map(i=>({ingredientId:i.ingredientId,quantity:Number(i.quantity)})):[];
  return {id:isValidId(raw?.id)?raw.id:uid(),name,sellingPrice,yield:yieldQty,items};
 }
 function importBackup(e){
@@ -495,11 +707,12 @@ function importBackup(e){
    const ingredients=data.ingredients.map(sanitizeIngredient).filter(Boolean);
    const validIds=new Set(ingredients.map(i=>i.id));
    const products=data.products.map(p=>sanitizeProduct(p,validIds)).filter(Boolean);
+   const sales=Array.isArray(data.sales)?data.sales.filter(s=>s&&s.id&&s.date&&s.items&&Array.isArray(s.items)):[];
    const skippedIngredients=data.ingredients.length-ingredients.length;
    const skippedProducts=data.products.length-products.length;
    const warning=skippedIngredients||skippedProducts?` ${skippedIngredients} ingrediente(s) e ${skippedProducts} produto(s) inválidos serão ignorados.`:'';
    if(!confirm(`Restaurar este backup substituirá os dados atuais.${warning} Continuar?`))return;
-   state={version:VERSION,ingredients,products};saveState();
+   state={version:VERSION,ingredients,products,sales};saveState();
    toast(warning?'Backup restaurado (alguns itens inválidos foram ignorados).':'Backup restaurado.');
   }catch(err){toast('Arquivo de backup inválido.')}
   e.target.value='';
@@ -507,8 +720,9 @@ function importBackup(e){
  reader.readAsText(file);
 }
 function clearAllData(){
- if(!confirm('ATENÇÃO: todos os ingredientes e produtos serão apagados deste navegador. Continuar?'))return;
+ if(!confirm('ATENÇÃO: todos os ingredientes, produtos e vendas serão apagados deste navegador. Continuar?'))return;
  state=JSON.parse(JSON.stringify(defaultState));
+ pendingSaleItems = [];
  saveState();toast('Dados apagados.');
 }
 
