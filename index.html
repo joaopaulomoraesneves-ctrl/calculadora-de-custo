@@ -170,16 +170,21 @@ const VERSION=2;
 
 const defaultState={version:VERSION,ingredients:[],products:[]};
 let state=loadState();
-let lastFocusedElement = null;           // para restaurar foco ao fechar modal
-let modalItemsMap = new Map();           // substitui window.modalItems: chave = id do produto ou 'new'
+let lastFocusedElement = null;
+let modalItemsMap = new Map();
 let debounceTimer = null;
 let productDebounceTimer = null;
+
+function isValidId(value){
+  return typeof value==='string' && /^[A-Za-z0-9_-]+$/.test(value);
+}
 
 function loadState(){
   try{
     const raw=localStorage.getItem(STORAGE_KEY);
     if(!raw) return structuredClone(defaultState);
     const data=JSON.parse(raw);
+    if(!data||typeof data!=='object') return structuredClone(defaultState);
     return {
       version:VERSION,
       ingredients:Array.isArray(data.ingredients)?data.ingredients:[],
@@ -206,8 +211,10 @@ function toast(msg){const el=document.getElementById('toast');el.textContent=msg
 
 document.querySelectorAll('.nav-btn').forEach(btn=>btn.addEventListener('click',()=>showPage(btn.dataset.page)));
 function showPage(id){
+ const target = document.getElementById(id);
+ if(!target) return;
  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
- document.getElementById(id).classList.add('active');
+ target.classList.add('active');
  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
  if(id==='pricing') renderPricing();
 }
@@ -218,7 +225,6 @@ function openModal(title,body){
   document.getElementById('modalBody').innerHTML=body;
   const backdrop = document.getElementById('modalBackdrop');
   backdrop.classList.add('open');
-  // atualiza aria-labelledby para apontar para o título
   backdrop.setAttribute('aria-labelledby', 'modalTitle');
   const first=document.getElementById('modalBody').querySelector('input,select,textarea');
   if(first)first.focus();
@@ -237,7 +243,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElement
 function openIngredientModal(id=null){
  const ing=id?state.ingredients.find(x=>x.id===id):null;
  openModal(ing?'Editar ingrediente':'Novo ingrediente',`
- <form onsubmit="submitIngredient(event,'${id||''}')">
+ <form onsubmit='submitIngredient(event,${JSON.stringify(id||'')})'>
  <div class="form-grid">
  <div class="field full"><label>Nome</label><input id="mName" required maxlength="80" value="${escapeHtml(ing?.name||'')}" placeholder="Ex.: Queijo mussarela"></div>
  <div class="field"><label>Quantidade comprada</label><input id="mQty" type="number" min="0.0001" step="0.0001" required value="${ing?.quantity??''}"></div>
@@ -275,7 +281,7 @@ function renderIngredients(){
  const el=document.getElementById('ingredientsTable');
  if(!list.length){el.innerHTML='<div class="empty">Nenhum ingrediente encontrado.<br><br><button class="btn btn-primary" onclick="openIngredientModal()">Cadastrar ingrediente</button></div>';return}
  el.innerHTML=`<div class="table-wrap"><table class="table"><thead><tr><th>Ingrediente</th><th>Categoria</th><th>Compra</th><th>Custo unitário</th><th>Ações</th></tr></thead><tbody>
- ${list.map(i=>`<tr><td><strong>${escapeHtml(i.name)}</strong></td><td><span class="badge">${escapeHtml(i.category)}</span></td><td>${i.quantity} ${i.unit} • ${money(i.price)}</td><td class="money">${money(i.pricePerUnit)}/${i.unit}</td><td><button class="btn btn-light btn-sm" onclick="openIngredientModal('${i.id}')" aria-label="Editar ${escapeHtml(i.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteIngredient('${i.id}')" aria-label="Excluir ${escapeHtml(i.name)}">🗑️</button></td></tr>`).join('')}</tbody></table></div>`;
+ ${list.map(i=>`<tr><td><strong>${escapeHtml(i.name)}</strong></td><td><span class="badge">${escapeHtml(i.category)}</span></td><td>${i.quantity} ${i.unit} • ${money(i.price)}</td><td class="money">${money(i.pricePerUnit)}/${i.unit}</td><td><button class="btn btn-light btn-sm" onclick='openIngredientModal(${JSON.stringify(i.id)})' aria-label="Editar ${escapeHtml(i.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick='deleteIngredient(${JSON.stringify(i.id)})' aria-label="Excluir ${escapeHtml(i.name)}">🗑️</button></td></tr>`).join('')}</tbody></table></div>`;
 }
 
 // Debounce para busca de ingredientes
@@ -296,21 +302,23 @@ function productUnitCost(product){
  return productCost(product)/y;
 }
 function productMargin(product){
- const cost=productUnitCost(product),price=num(product.sellingPrice);return price>0?((price-cost)/price)*100:0;
+ const cost=productUnitCost(product),price=num(product.sellingPrice);
+ if(price===0) return cost===0?0:-100;
+ return ((price-cost)/price)*100;
 }
 function productMarkup(product){
- const cost=productUnitCost(product),price=num(product.sellingPrice);return cost>0?((price-cost)/cost)*100:0;
+ const cost=productUnitCost(product),price=num(product.sellingPrice);
+ if(cost===0) return price===0?0:Infinity;
+ return ((price-cost)/cost)*100;
 }
 
 function openProductModal(id=null){
   const p = id ? state.products.find(x=>x.id===id) : null;
-  const productKey = id || 'new';   // chave para o Map
-  // inicializa itens do modal a partir do produto existente ou array vazio
+  const productKey = id || 'new';
   modalItemsMap.set(productKey, p ? p.items.map(x=>({...x})) : []);
-  const rows = modalItemsMap.get(productKey);
   const options=state.ingredients.map(i=>`<option value="${i.id}">${escapeHtml(i.name)} — ${money(i.pricePerUnit)}/${i.unit}</option>`).join('');
   openModal(p?'Editar produto':'Novo produto',`
- <form onsubmit="submitProduct(event,'${id||''}')">
+ <form onsubmit='submitProduct(event,${JSON.stringify(id||'')})'>
  <div class="form-grid">
  <div class="field full"><label>Nome do produto</label><input id="pName" required maxlength="80" value="${escapeHtml(p?.name||'')}" placeholder="Ex.: Hambúrguer Bacon"></div>
  <div class="field"><label>Preço de venda (R$)</label><input id="pPrice" type="number" min="0" step="0.01" value="${p?.sellingPrice??''}" placeholder="Ex.: 15,00"></div>
@@ -319,11 +327,10 @@ function openProductModal(id=null){
  <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
  <div class="section-title">Composição</div>
  <div class="form-grid"><div class="field"><label>Ingrediente</label><select id="piIngredient">${options||'<option value="">Cadastre ingredientes primeiro</option>'}</select></div><div class="field"><label>Quantidade usada na receita</label><input id="piQty" type="number" min="0.0001" step="0.0001" placeholder="Ex.: 500"></div></div>
- <div class="actions"><button type="button" class="btn btn-light" onclick="addModalItem('${productKey}')">＋ Adicionar à receita</button></div>
+ <div class="actions"><button type="button" class="btn btn-light" onclick='addModalItem(${JSON.stringify(productKey)})'>＋ Adicionar à receita</button></div>
  <div id="modalItems" class="list" style="margin-top:12px"></div>
- <div class="actions"><button type="button" class="btn btn-light" onclick="cancelProductModal('${productKey}')">Cancelar</button><button type="submit" class="btn btn-primary">Salvar produto</button></div>
+ <div class="actions"><button type="button" class="btn btn-light" onclick='cancelProductModal(${JSON.stringify(productKey)})'>Cancelar</button><button type="submit" class="btn btn-primary">Salvar produto</button></div>
  </form>`);
-  // renderiza itens iniciais
   renderModalItems(productKey);
 }
 
@@ -350,7 +357,7 @@ function renderModalItems(productKey){
  if(!items.length){el.innerHTML='<div class="empty" style="padding:18px">Nenhum ingrediente na receita.</div>';return}
  el.innerHTML=items.map((x,n)=>{
    const i=state.ingredients.find(y=>y.id===x.ingredientId);
-   return i?`<div class="list-item"><div class="list-main"><strong>${escapeHtml(i.name)}</strong><small>${x.quantity} ${i.unit} • ${money(ingredientCost(i.id,x.quantity))}</small></div><button type="button" class="btn btn-danger btn-sm" onclick="removeModalItem('${productKey}',${n})" aria-label="Remover ${escapeHtml(i.name)} da receita">🗑️</button></div>`:'';
+   return i?`<div class="list-item"><div class="list-main"><strong>${escapeHtml(i.name)}</strong><small>${x.quantity} ${i.unit} • ${money(ingredientCost(i.id,x.quantity))}</small></div><button type="button" class="btn btn-danger btn-sm" onclick='removeModalItem(${JSON.stringify(productKey)},${n})' aria-label="Remover ${escapeHtml(i.name)} da receita">🗑️</button></div>`:'';
  }).join('');
 }
 
@@ -370,7 +377,6 @@ function submitProduct(e,id){
 
  const productKey = id || 'new';
  let items = modalItemsMap.get(productKey) || [];
- // verifica se algum ingrediente foi removido enquanto o modal estava aberto
  const validIds = new Set(state.ingredients.map(i=>i.id));
  const originalLength = items.length;
  items = items.filter(item => validIds.has(item.ingredientId));
@@ -386,7 +392,7 @@ function submitProduct(e,id){
  const data={name,sellingPrice,yield:yieldQty,items:items.map(x=>({...x}))};
  if(id){const idx=state.products.findIndex(x=>x.id===id);if(idx>=0)state.products[idx]={...state.products[idx],...data}}
  else state.products.push({id:uid(),...data});
- modalItemsMap.delete(productKey); // limpa o Map após salvar
+ modalItemsMap.delete(productKey);
  closeModal();saveState();toast(id?'Produto atualizado.':'Produto criado.');
 }
 
@@ -402,7 +408,7 @@ function renderProducts(){
  const list=state.products.filter(p=>p.name.toLowerCase().includes(q));
  if(!list.length){el.innerHTML='<div class="empty">Nenhum produto encontrado.</div>';return}
  el.innerHTML=`<div class="table-wrap"><table class="table"><thead><tr><th>Produto</th><th>Custo unitário</th><th>Venda</th><th>Margem</th><th>Markup</th><th>Ações</th></tr></thead><tbody>
- ${list.map(p=>{const cost=productUnitCost(p),margin=productMargin(p),markup=productMarkup(p);return `<tr><td><strong>${escapeHtml(p.name)}</strong><br><small class="muted">${p.items.length} ingrediente(s) • rendimento ${p.yield}</small></td><td class="money">${money(cost)}</td><td>${money(p.sellingPrice)}</td><td class="${margin>=30?'positive':margin>0?'':'negative'}">${margin.toFixed(1)}%</td><td>${markup.toFixed(1)}%</td><td><button class="btn btn-light btn-sm" onclick="openProductModal('${p.id}')" aria-label="Editar ${escapeHtml(p.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" aria-label="Excluir ${escapeHtml(p.name)}">🗑️</button></td></tr>`}).join('')}</tbody></table></div>`;
+ ${list.map(p=>{const cost=productUnitCost(p),margin=productMargin(p),markup=productMarkup(p);const markupLabel=markup===Infinity?'∞':`${markup.toFixed(1)}%`;return `<tr><td><strong>${escapeHtml(p.name)}</strong><br><small class="muted">${p.items.length} ingrediente(s) • rendimento ${p.yield}</small></td><td class="money">${money(cost)}</td><td>${money(p.sellingPrice)}</td><td class="${margin>=30?'positive':margin>0?'':'negative'}">${margin.toFixed(1)}%</td><td>${markupLabel}</td><td><button class="btn btn-light btn-sm" onclick='openProductModal(${JSON.stringify(p.id)})' aria-label="Editar ${escapeHtml(p.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick='deleteProduct(${JSON.stringify(p.id)})' aria-label="Excluir ${escapeHtml(p.name)}">🗑️</button></td></tr>`}).join('')}</tbody></table></div>`;
 }
 
 // Debounce para busca de produtos
@@ -420,7 +426,8 @@ function renderPricing(){
  const cost=productUnitCost(p),price=num(p.sellingPrice),margin=productMargin(p),markup=productMarkup(p);
  const target=Math.min(99.99,Math.max(0,Number(document.getElementById('targetMargin').value)||0));
  const recommended=target<100?cost/(1-target/100):0;
- el.innerHTML=`<div class="price-box"><div>Custo unitário<b>${money(cost)}</b></div><div>Preço atual<b>${money(price)}</b></div><div>Lucro unitário<b class="${price-cost>=0?'positive':'negative'}">${money(price-cost)}</b></div><div>Margem atual<b>${margin.toFixed(1)}%</b></div><div>Markup<b>${markup.toFixed(1)}%</b></div><div>Preço recomendado<b>${money(recommended)}</b></div></div>
+ const markupLabel=markup===Infinity?'∞':`${markup.toFixed(1)}%`;
+ el.innerHTML=`<div class="price-box"><div>Custo unitário<b>${money(cost)}</b></div><div>Preço atual<b>${money(price)}</b></div><div>Lucro unitário<b class="${price-cost>=0?'positive':'negative'}">${money(price-cost)}</b></div><div>Margem atual<b>${margin.toFixed(1)}%</b></div><div>Markup<b>${markupLabel}</b></div><div>Preço recomendado<b>${money(recommended)}</b></div></div>
  <div class="card" style="margin-top:15px;background:#faf5ff;border-color:#ddd6fe"><strong>Como chegamos ao preço recomendado?</strong><p class="muted" style="margin-top:6px">Custo unitário ÷ (1 − margem desejada). Esta V2.0 Fundação ainda não inclui taxas, impostos, embalagem, mão de obra ou perdas no cálculo.</p></div>`;
 }
 
@@ -453,7 +460,10 @@ function renderAll(){renderIngredients();renderProducts();renderPricing();render
 /* ========== Backup / Restauração ========== */
 function exportBackup(){
  const blob=new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});
- const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`burgercalc-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);toast('Backup exportado.');
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`burgercalc-backup-${new Date().toISOString().slice(0,10)}.json`;
+ document.body.appendChild(a);a.click();
+ setTimeout(()=>{URL.revokeObjectURL(a.href);document.body.removeChild(a);},1000);
+ toast('Backup exportado.');
 }
 function sanitizeIngredient(raw){
  const name=String(raw?.name||'').trim();
@@ -461,7 +471,7 @@ function sanitizeIngredient(raw){
  const price=Number(raw?.price);
  const unit=['g','kg','ml','l','un'].includes(raw?.unit)?raw.unit:'un';
  if(!name||!(quantity>0)||Number.isNaN(price)||price<0)return null;
- return {id:typeof raw.id==='string'&&raw.id?raw.id:uid(),name,quantity,unit,price,category:String(raw?.category||'Outros').trim()||'Outros',pricePerUnit:price/quantity};
+ return {id:isValidId(raw?.id)?raw.id:uid(),name,quantity,unit,price,category:String(raw?.category||'Outros').trim()||'Outros',pricePerUnit:price/quantity};
 }
 function sanitizeProduct(raw,validIngredientIds){
  const name=String(raw?.name||'').trim();
@@ -469,8 +479,8 @@ function sanitizeProduct(raw,validIngredientIds){
  let yieldQty=Number(raw?.yield);
  if(!(yieldQty>=1))yieldQty=1;
  if(!name||Number.isNaN(sellingPrice)||sellingPrice<0)return null;
- const items=Array.isArray(raw?.items)?raw.items.filter(i=>i&&validIngredientIds.has(i.ingredientId)&&Number(i.quantity)>0).map(i=>({ingredientId:i.ingredientId,quantity:Number(i.quantity)})):[];
- return {id:typeof raw.id==='string'&&raw.id?raw.id:uid(),name,sellingPrice,yield:yieldQty,items};
+ const items=Array.isArray(raw?.items)?raw.items.filter(i=>i&&validIngredientIds.has(i.ingredientId)&&Number(i.quantity)>0).map(i=>({ingredientId:i.ingredientId,quantity:Number(i.quantity)})):[]; 
+ return {id:isValidId(raw?.id)?raw.id:uid(),name,sellingPrice,yield:yieldQty,items};
 }
 function importBackup(e){
  const file=e.target.files[0];if(!file)return;
@@ -498,11 +508,10 @@ function importBackup(e){
 }
 function clearAllData(){
  if(!confirm('ATENÇÃO: todos os ingredientes e produtos serão apagados deste navegador. Continuar?'))return;
- state=JSON.parse(JSON.stringify(defaultState)); // clone seguro
+ state=JSON.parse(JSON.stringify(defaultState));
  saveState();toast('Dados apagados.');
 }
 
-// inicializa
 renderAll();
 </script>
 </body>
