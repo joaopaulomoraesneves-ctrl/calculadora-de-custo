@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#111827">
 <title>BurgerCalc Pro 2.1 — Estável + Vendas</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --bg:#f4f7fb;--surface:#fff;--surface-2:#f8fafc;--text:#172033;--muted:#64748b;
@@ -20,7 +21,7 @@ button{cursor:pointer}
 .topbar{position:sticky;top:0;z-index:20;background:rgba(17,24,39,.96);color:#fff;backdrop-filter:blur(12px)}
 .topbar-inner{max-width:1280px;margin:auto;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:15px}
 .brand{display:flex;align-items:center;gap:11px}.brand-icon{font-size:28px}.brand h1{font-size:1.1rem}.brand span{display:block;color:#cbd5e1;font-size:.75rem}
-.top-actions{display:flex;gap:8px}
+.top-actions{display:flex;gap:8px;align-items:center}
 .btn{border:0;border-radius:12px;padding:10px 14px;font-weight:700;transition:.2s}
 .btn:hover{transform:translateY(-1px)}.btn-primary{background:var(--primary);color:#fff}.btn-dark{background:#334155;color:#fff}
 .btn-light{background:#fff;border:1px solid var(--line);color:var(--text)}.btn-danger{background:#fee2e2;color:#991b1b}
@@ -94,7 +95,12 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 <header class="topbar">
   <div class="topbar-inner">
     <div class="brand"><div class="brand-icon">🍔</div><div><h1>BurgerCalc Pro 2.1</h1><span>Estável • custos, precificação e vendas</span></div></div>
-    <div class="top-actions"><button class="btn btn-dark btn-export" onclick="exportBackup()">Exportar</button><button class="btn btn-dark btn-restore" onclick="document.getElementById('importFile').click()">Restaurar</button><input id="importFile" type="file" accept=".json" hidden onchange="importBackup(event)"></div>
+    <div class="top-actions">
+      <button class="btn btn-dark btn-export" onclick="exportBackup()">Exportar</button>
+      <button class="btn btn-dark btn-restore" onclick="document.getElementById('importFile').click()">Restaurar</button>
+      <input id="importFile" type="file" accept=".json" hidden onchange="importBackup(event)">
+      <span id="authArea"></span>
+    </div>
   </div>
 </header>
 
@@ -185,12 +191,13 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 <div class="card">
 <div class="section-title">Histórico de vendas</div>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:15px;align-items:center">
-  <input type="date" id="filterDateFrom" onchange="renderSalesHistory()" style="width:auto;flex:1;min-width:130px">
+  <input type="date" id="filterDateFrom" onchange="resetSalesPageAndRender()" style="width:auto;flex:1;min-width:130px">
   <span class="muted">até</span>
-  <input type="date" id="filterDateTo" onchange="renderSalesHistory()" style="width:auto;flex:1;min-width:130px">
-  <input id="saleSearch" class="search" placeholder="🔎 Buscar produto..." oninput="renderSalesHistory()" style="max-width:200px">
+  <input type="date" id="filterDateTo" onchange="resetSalesPageAndRender()" style="width:auto;flex:1;min-width:130px">
+  <input id="saleSearch" class="search" placeholder="🔎 Buscar produto..." oninput="resetSalesPageAndRender()" style="max-width:200px">
 </div>
 <div id="salesHistoryTable"></div>
+<div id="salesPagination" style="display:flex;justify-content:center;gap:8px;margin-top:15px"></div>
 </div>
 </section>
 
@@ -215,9 +222,26 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 <div id="toast" class="toast"></div>
 
 <script>
+// ================== CONFIGURAÇÃO DO SUPABASE (SUBSTITUIR) ==================
+const SUPABASE_URL = 'https://wfnplxwodgrzukljvlzp.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_8DQP21Cm6g4Xzjzk0kcWUA_g6ub7oMX';
+let supabase = null;
+let currentUser = null;
+
+// Inicialização do cliente Supabase
+function initSupabase() {
+  if (typeof window.supabase !== 'undefined') {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    return supabase;
+  } else {
+    console.error('Biblioteca do Supabase não carregada.');
+    return null;
+  }
+}
+
+// ================== ESTADO LOCAL ==================
 const STORAGE_KEY='burgercalc_pro_v2';
 const VERSION=2.1;
-
 const defaultState={version:VERSION,ingredients:[],products:[],sales:[]};
 let state=loadState();
 let lastFocusedElement = null;
@@ -225,26 +249,283 @@ let modalItemsMap = new Map();
 let debounceTimer = null;
 let productDebounceTimer = null;
 let pendingSaleItems = [];
+let confirmCallback = null;
+let salesPage = 1;
+const salesPageSize = 50;
+let salesFiltered = [];
+let pendingImportData = null;
 
+// ================== FUNÇÕES AUXILIARES ==================
+function roundCurrency(value){
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
 function isValidId(value){
   return typeof value==='string' && /^[A-Za-z0-9_-]+$/.test(value);
 }
+function pad2(v){return String(v).padStart(2,'0')}
+function localDateTimeValue(date=new Date()){
+  return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+function localDateKey(date=new Date()){
+  return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())}`;
+}
+function normalizeDateTimeLocal(value){
+  if(!value) return new Date().toISOString();
+  const d=new Date(value);
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)}
+function money(v){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0)}
+function num(v){return Number(v)||0}
+function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.remove('show'),2400)}
 
+// ================== CONFIRMAÇÃO PERSONALIZADA ==================
+function confirmAction(title, message, onConfirm, confirmText='Confirmar', confirmClass='btn-danger'){
+  confirmCallback = onConfirm;
+  openModal(title, `
+    <div style="margin-bottom:20px">${message}</div>
+    <div class="actions">
+      <button class="btn btn-light" onclick="cancelConfirm()">Cancelar</button>
+      <button class="btn ${confirmClass}" onclick="confirmYes()">${confirmText}</button>
+    </div>
+  `);
+}
+function cancelConfirm(){
+  confirmCallback = null;
+  closeModal();
+}
+function confirmYes(){
+  if(confirmCallback) confirmCallback();
+  confirmCallback = null;
+  closeModal();
+}
+
+// ================== AUTENTICAÇÃO ==================
+function renderAuthArea(){
+  const el = document.getElementById('authArea');
+  if (!el) return;
+  if (currentUser) {
+    el.innerHTML = `<span class="muted" style="color:#cbd5e1">${escapeHtml(currentUser.email)}</span> <button class="btn btn-light btn-sm" onclick="signOut()">Sair</button>`;
+  } else {
+    el.innerHTML = `<button class="btn btn-primary btn-sm" onclick="openAuthModal()">Entrar</button>`;
+  }
+}
+
+function openAuthModal(){
+  openModal('Entrar ou criar conta', `
+    <form onsubmit="handleAuthSubmit(event)">
+      <div class="form-grid">
+        <div class="field full"><label>Email</label><input id="authEmail" type="email" required placeholder="seu@email.com"></div>
+        <div class="field full"><label>Senha</label><input id="authPassword" type="password" required minlength="6" placeholder="Senha (mín. 6 caracteres)"></div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">Entrar</button>
+        <button type="button" class="btn btn-light" onclick="signUp()">Criar conta</button>
+      </div>
+    </form>
+  `);
+}
+
+async function handleAuthSubmit(e){
+  e.preventDefault();
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if (!email || !password) return toast('Preencha email e senha.');
+  if (!supabase) return toast('Supabase não configurado.');
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) return toast(`Erro ao entrar: ${error.message}`);
+  currentUser = data.user;
+  closeModal();
+  renderAuthArea();
+  await syncFromSupabase();
+  toast('Login realizado com sucesso!');
+}
+
+async function signUp(){
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if (!email || !password) return toast('Preencha email e senha.');
+  if (!supabase) return toast('Supabase não configurado.');
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) return toast(`Erro ao criar conta: ${error.message}`);
+  toast('Conta criada! Verifique seu email para confirmar o cadastro.');
+}
+
+async function signOut(){
+  if (!supabase) return;
+  await supabase.auth.signOut();
+  currentUser = null;
+  renderAuthArea();
+  toast('Sessão encerrada.');
+}
+
+// ================== SINCRONIZAÇÃO COM SUPABASE ==================
+async function syncFromSupabase(){
+  if (!supabase || !currentUser) return;
+  try {
+    const userId = currentUser.id;
+    const [ingRes, prodRes, salesRes] = await Promise.all([
+      supabase.from('ingredients').select('*').eq('user_id', userId),
+      supabase.from('products').select('*').eq('user_id', userId),
+      supabase.from('sales').select('*').eq('user_id', userId)
+    ]);
+    if (ingRes.error) throw ingRes.error;
+    if (prodRes.error) throw prodRes.error;
+    if (salesRes.error) throw salesRes.error;
+
+    const ingredients = ingRes.data.map(row => ({
+      id: row.id,
+      name: row.name,
+      quantity: Number(row.quantity),
+      unit: row.unit,
+      price: Number(row.price),
+      category: row.category,
+      pricePerUnit: Number(row.price_per_unit)
+    }));
+    const products = prodRes.data.map(row => ({
+      id: row.id,
+      name: row.name,
+      sellingPrice: Number(row.selling_price),
+      yield: row.yield,
+      items: row.items // jsonb já vem como array
+    }));
+    const sales = salesRes.data.map(row => ({
+      id: row.id,
+      date: row.date,
+      items: row.items,
+      totalAmount: Number(row.total_amount),
+      totalCost: Number(row.total_cost),
+      discount: Number(row.discount),
+      finalAmount: Number(row.final_amount),
+      payment: row.payment
+    }));
+
+    state = {version:VERSION, ingredients, products, sales};
+    saveLocalState();
+    renderAll();
+    toast('Dados sincronizados com sucesso!');
+  } catch (error) {
+    console.error('Erro ao sincronizar:', error);
+    toast('Falha ao carregar dados do Supabase.');
+  }
+}
+
+async function syncStateToSupabase(){
+  if (!supabase || !currentUser) return;
+  try {
+    const userId = currentUser.id;
+    const ingredientsPayload = state.ingredients.map(i => ({
+      id: i.id,
+      user_id: userId,
+      name: i.name,
+      quantity: i.quantity,
+      unit: i.unit,
+      price: i.price,
+      category: i.category,
+      price_per_unit: i.pricePerUnit
+    }));
+    const productsPayload = state.products.map(p => ({
+      id: p.id,
+      user_id: userId,
+      name: p.name,
+      selling_price: p.sellingPrice,
+      yield: p.yield,
+      items: p.items
+    }));
+    const salesPayload = state.sales.map(s => ({
+      id: s.id,
+      user_id: userId,
+      date: s.date,
+      items: s.items,
+      total_amount: s.totalAmount,
+      total_cost: s.totalCost,
+      discount: s.discount,
+      final_amount: s.finalAmount,
+      payment: s.payment
+    }));
+
+    const [ingRes, prodRes, salesRes] = await Promise.all([
+      supabase.from('ingredients').upsert(ingredientsPayload, { onConflict: 'id' }),
+      supabase.from('products').upsert(productsPayload, { onConflict: 'id' }),
+      supabase.from('sales').upsert(salesPayload, { onConflict: 'id' })
+    ]);
+    if (ingRes.error) throw ingRes.error;
+    if (prodRes.error) throw prodRes.error;
+    if (salesRes.error) throw salesRes.error;
+  } catch (error) {
+    console.error('Erro ao enviar dados para Supabase:', error);
+    toast('Falha ao sincronizar com a nuvem.');
+  }
+}
+
+// ================== PERSISTÊNCIA LOCAL ==================
+function saveLocalState(){
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error('Erro ao salvar localmente:', e);
+  }
+}
+
+function saveState(){
+  saveLocalState();
+  renderAll();
+  toast('Dados salvos!');
+  if (supabase && currentUser) {
+    syncStateToSupabase();
+  }
+}
+
+// ================== SANITIZAÇÃO E CARREGAMENTO ==================
 function sanitizeSale(raw){
   if(!raw||!raw.id||!raw.date||!Array.isArray(raw.items)) return null;
-  const totalAmount = Number(raw.totalAmount)||0;
-  const discount = Number(raw.discount)||0;
-  const finalAmount = Math.max(0, totalAmount - discount);
+
+  const items = raw.items
+    .filter(item => item && typeof item.productId === 'string' && item.productId.trim() !== '' && Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0)
+    .map(item => ({
+      productId: item.productId,
+      productName: String(item.productName || ''),
+      quantity: Number(item.quantity),
+      unitPrice: roundCurrency(Number(item.unitPrice) || 0),
+      unitCost: roundCurrency(Number(item.unitCost) || 0)
+    }));
+
+  if(items.length === 0) return null;
+
+  const totalAmount = roundCurrency(Number(raw.totalAmount) || 0);
+  const discount = roundCurrency(Math.max(0, Number(raw.discount) || 0));
+  const totalCost = roundCurrency(Number(raw.totalCost) || 0);
+  const finalAmount = roundCurrency(Math.max(0, totalAmount - discount));
+
   return {
-    id: isValidId(raw.id)?raw.id:uid(),
+    id: isValidId(raw.id)? raw.id : uid(),
     date: raw.date,
-    items: raw.items.filter(i => i && i.productId && i.quantity>0),
+    items,
     totalAmount,
-    totalCost: Number(raw.totalCost)||0,
+    totalCost,
     discount,
     finalAmount,
-    payment: String(raw.payment||'Outros')
+    payment: String(raw.payment || 'Outros')
   };
+}
+
+function sanitizeIngredient(raw){
+ const name=String(raw?.name||'').trim();
+ const quantity=Number(raw?.quantity);
+ const price=Number(raw?.price);
+ const unit=['g','kg','ml','l','un'].includes(raw?.unit)?raw.unit:'un';
+ if(!name||!(quantity>0)||Number.isNaN(price)||price<0)return null;
+ return {id:isValidId(raw?.id)?raw.id:uid(),name,quantity,unit,price,category:String(raw?.category||'Outros').trim()||'Outros',pricePerUnit:roundCurrency(price/quantity)};
+}
+function sanitizeProduct(raw,validIngredientIds){
+ const name=String(raw?.name||'').trim();
+ const sellingPrice=Number(raw?.sellingPrice);
+ let yieldQty=Number(raw?.yield);
+ if(!(yieldQty>=1))yieldQty=1;
+ if(!name||Number.isNaN(sellingPrice)||sellingPrice<0)return null;
+ const items=Array.isArray(raw?.items)?raw.items.filter(i=>i&&validIngredientIds.has(i.ingredientId)&&Number(i.quantity)>0).map(i=>({ingredientId:i.ingredientId,quantity:Number(i.quantity)})):[];
+ return {id:isValidId(raw?.id)?raw.id:uid(),name,sellingPrice: roundCurrency(sellingPrice),yield:yieldQty,items};
 }
 
 function loadState(){
@@ -275,39 +556,23 @@ function loadState(){
   }
 }
 
-function pad2(v){return String(v).padStart(2,'0')}
-
-function localDateTimeValue(date=new Date()){
-  return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
-}
-
-function localDateKey(date=new Date()){
-  return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())}`;
-}
-
-function normalizeDateTimeLocal(value){
-  if(!value) return new Date().toISOString();
-  const d=new Date(value);
-  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
-}
-
-
-function saveState(){
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    renderAll();
-  } catch (e) {
-    toast('Erro ao salvar dados. O armazenamento local pode estar cheio ou indisponível.');
-    console.error(e);
+// ================== INICIALIZAÇÃO ==================
+async function initApp(){
+  initSupabase();
+  if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      currentUser = user;
+      renderAuthArea();
+      await syncFromSupabase();
+    }
   }
+  renderAll();
 }
 
-function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)}
-function money(v){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0)}
-function num(v){return Number(v)||0}
-function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.remove('show'),2400)}
+initApp();
 
+// ================== NAVEGAÇÃO ==================
 document.querySelectorAll('.nav-btn').forEach(btn=>btn.addEventListener('click',()=>showPage(btn.dataset.page)));
 function showPage(id){
  const target = document.getElementById(id);
@@ -339,16 +604,16 @@ function closeModal(){
 function backdropClose(e){if(e.target.id==='modalBackdrop')closeModal()}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('modalBackdrop').classList.contains('open'))closeModal()});
 
-/* ========== Ingredientes ========== */
+/* ========== INGREDIENTES ========== */
 function openIngredientModal(id=null){
  const ing=id?state.ingredients.find(x=>x.id===id):null;
  openModal(ing?'Editar ingrediente':'Novo ingrediente',`
  <form onsubmit='submitIngredient(event,${JSON.stringify(id||'')})'>
  <div class="form-grid">
  <div class="field full"><label>Nome</label><input id="mName" required maxlength="80" value="${escapeHtml(ing?.name||'')}" placeholder="Ex.: Queijo mussarela"></div>
- <div class="field"><label>Quantidade comprada</label><input id="mQty" type="number" min="0.0001" step="0.0001" required value="${ing?.quantity??''}"></div>
+ <div class="field"><label>Quantidade comprada</label><input id="mQty" type="number" min="0.0001" step="0.0001" required value="${ing?.quantity??''}" max="1000000"></div>
  <div class="field"><label>Unidade</label><select id="mUnit">${['g','kg','ml','l','un'].map(u=>`<option ${ing?.unit===u?'selected':''}>${u}</option>`).join('')}</select></div>
- <div class="field"><label>Preço pago (R$)</label><input id="mPrice" type="number" min="0" step="0.01" required value="${ing?.price??''}"></div>
+ <div class="field"><label>Preço pago (R$)</label><input id="mPrice" type="number" min="0" step="0.01" required value="${ing?.price??''}" max="1000000"></div>
  <div class="field"><label>Categoria</label><input id="mCategory" maxlength="40" value="${escapeHtml(ing?.category||'Outros')}" placeholder="Ex.: Laticínios"></div>
  </div>
  <div class="actions"><button type="button" class="btn btn-light" onclick="closeModal()">Cancelar</button><button type="submit" class="btn btn-primary">Salvar ingrediente</button></div>
@@ -360,22 +625,25 @@ function submitIngredient(e,id){
  if(!name)return toast('Informe o nome do ingrediente.');
  if(quantity<=0)return toast('A quantidade deve ser maior que zero.');
  if(price<0||Number.isNaN(price))return toast('Informe um preço válido.');
+ if(price>1000000)return toast('Valor de preço muito alto.');
  const data={name,quantity,unit:document.getElementById('mUnit').value,price,category:document.getElementById('mCategory').value.trim()||'Outros'};
- data.pricePerUnit=price/quantity;
+ data.pricePerUnit=roundCurrency(price/quantity);
  if(id){const i=state.ingredients.findIndex(x=>x.id===id);if(i>=0)state.ingredients[i]={...state.ingredients[i],...data}}
  else state.ingredients.push({id:uid(),...data});
  closeModal();saveState();toast(id?'Ingrediente atualizado.':'Ingrediente cadastrado.');
 }
 function deleteIngredient(id){
  const ing=state.ingredients.find(x=>x.id===id); if(!ing)return;
- if(state.products.some(p=>p.items.some(i=>i.ingredientId===id))){
-   if(!confirm(`"${ing.name}" está em uma ou mais receitas. Excluir também removerá esse ingrediente das receitas. Continuar?`))return;
- }else if(!confirm(`Excluir "${ing.name}"?`))return;
- state.products.forEach(p=>p.items=p.items.filter(i=>i.ingredientId!==id));
- // Remove produtos que ficaram sem ingredientes
- state.products = state.products.filter(p => p.items.length > 0);
- state.ingredients=state.ingredients.filter(x=>x.id!==id);
- saveState();toast('Ingrediente excluído.');
+ const hasProducts = state.products.some(p=>p.items.some(i=>i.ingredientId===id));
+ const message = hasProducts
+   ? `"${ing.name}" está em uma ou mais receitas. Excluir também removerá esse ingrediente das receitas. Continuar?`
+   : `Excluir "${ing.name}"?`;
+ confirmAction('Excluir ingrediente', `<p>${message}</p>`, () => {
+   state.products.forEach(p=>p.items=p.items.filter(i=>i.ingredientId!==id));
+   state.products = state.products.filter(p => p.items.length > 0);
+   state.ingredients=state.ingredients.filter(x=>x.id!==id);
+   saveState();toast('Ingrediente excluído.');
+ });
 }
 function renderIngredients(){
  const q=(document.getElementById('ingredientSearch')?.value||'').toLowerCase().trim();
@@ -385,22 +653,21 @@ function renderIngredients(){
  el.innerHTML=`<div class="table-wrap"><table class="table"><thead><tr><th>Ingrediente</th><th>Categoria</th><th>Compra</th><th>Custo unitário</th><th>Ações</th></tr></thead><tbody>
  ${list.map(i=>`<tr><td><strong>${escapeHtml(i.name)}</strong></td><td><span class="badge">${escapeHtml(i.category)}</span></td><td>${i.quantity} ${i.unit} • ${money(i.price)}</td><td class="money">${money(i.pricePerUnit)}/${i.unit}</td><td><button class="btn btn-light btn-sm" onclick='openIngredientModal(${JSON.stringify(i.id)})' aria-label="Editar ${escapeHtml(i.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick='deleteIngredient(${JSON.stringify(i.id)})' aria-label="Excluir ${escapeHtml(i.name)}">🗑️</button></td></tr>`).join('')}</tbody></table></div>`;
 }
-
 function debouncedRenderIngredients(){
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => renderIngredients(), 250);
 }
 
-/* ========== Produtos ========== */
+/* ========== PRODUTOS ========== */
 function ingredientCost(id,qty){
- const ing=state.ingredients.find(i=>i.id===id);return ing?ing.pricePerUnit*num(qty):0;
+ const ing=state.ingredients.find(i=>i.id===id);return ing?roundCurrency(ing.pricePerUnit*num(qty)):0;
 }
 function productCost(product){
- return product.items.reduce((s,i)=>s+ingredientCost(i.ingredientId,i.quantity),0);
+ return roundCurrency(product.items.reduce((s,i)=>s+ingredientCost(i.ingredientId,i.quantity),0));
 }
 function productUnitCost(product){
  const y=product.yield>0?product.yield:1;
- return productCost(product)/y;
+ return roundCurrency(productCost(product)/y);
 }
 function productMargin(product){
  const cost=productUnitCost(product),price=num(product.sellingPrice);
@@ -422,28 +689,27 @@ function openProductModal(id=null){
  <form onsubmit='submitProduct(event,${JSON.stringify(id||'')})'>
  <div class="form-grid">
  <div class="field full"><label>Nome do produto</label><input id="pName" required maxlength="80" value="${escapeHtml(p?.name||'')}" placeholder="Ex.: Hambúrguer Bacon"></div>
- <div class="field"><label>Preço de venda (R$)</label><input id="pPrice" type="number" min="0" step="0.01" value="${p?.sellingPrice??''}" placeholder="Ex.: 15,00"></div>
- <div class="field"><label>Rendimento da receita</label><input id="pYield" type="number" min="1" step="1" value="${p?.yield??1}"><small class="muted">Quantidade de unidades produzidas pela receita.</small></div>
+ <div class="field"><label>Preço de venda (R$)</label><input id="pPrice" type="number" min="0" step="0.01" value="${p?.sellingPrice??''}" placeholder="Ex.: 15,00" max="1000000"></div>
+ <div class="field"><label>Rendimento da receita</label><input id="pYield" type="number" min="1" step="1" value="${p?.yield??1}" max="1000"><small class="muted">Quantidade de unidades produzidas pela receita.</small></div>
  </div>
  <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
  <div class="section-title">Composição</div>
- <div class="form-grid"><div class="field"><label>Ingrediente</label><select id="piIngredient">${options||'<option value="">Cadastre ingredientes primeiro</option>'}</select></div><div class="field"><label>Quantidade usada na receita</label><input id="piQty" type="number" min="0.0001" step="0.0001" placeholder="Ex.: 500"></div></div>
+ <div class="form-grid"><div class="field"><label>Ingrediente</label><select id="piIngredient">${options||'<option value="">Cadastre ingredientes primeiro</option>'}</select></div><div class="field"><label>Quantidade usada na receita</label><input id="piQty" type="number" min="0.0001" step="0.0001" placeholder="Ex.: 500" max="1000000"></div></div>
  <div class="actions"><button type="button" class="btn btn-light" onclick='addModalItem(${JSON.stringify(productKey)})'>＋ Adicionar à receita</button></div>
  <div id="modalItems" class="list" style="margin-top:12px"></div>
  <div class="actions"><button type="button" class="btn btn-light" onclick='cancelProductModal(${JSON.stringify(productKey)})'>Cancelar</button><button type="submit" class="btn btn-primary">Salvar produto</button></div>
  </form>`);
   renderModalItems(productKey);
 }
-
 function cancelProductModal(productKey){
  modalItemsMap.delete(productKey);
  closeModal();
 }
-
 function addModalItem(productKey){
  const ingredientId=document.getElementById('piIngredient').value, quantity=Number(document.getElementById('piQty').value);
  if(!ingredientId)return toast('Selecione um ingrediente.');
  if(quantity<=0)return toast('Informe uma quantidade válida.');
+ if(quantity>1000000)return toast('Quantidade muito alta.');
  const items = modalItemsMap.get(productKey) || [];
  const existing=items.find(x=>x.ingredientId===ingredientId);
  if(existing)existing.quantity+=quantity;else items.push({ingredientId,quantity});
@@ -451,7 +717,6 @@ function addModalItem(productKey){
  document.getElementById('piQty').value='';
  renderModalItems(productKey);
 }
-
 function renderModalItems(productKey){
  const el=document.getElementById('modalItems');if(!el)return;
  const items = modalItemsMap.get(productKey) || [];
@@ -461,20 +726,19 @@ function renderModalItems(productKey){
    return i?`<div class="list-item"><div class="list-main"><strong>${escapeHtml(i.name)}</strong><small>${x.quantity} ${i.unit} • ${money(ingredientCost(i.id,x.quantity))}</small></div><button type="button" class="btn btn-danger btn-sm" onclick='removeModalItem(${JSON.stringify(productKey)},${n})' aria-label="Remover ${escapeHtml(i.name)} da receita">🗑️</button></div>`:'';
  }).join('');
 }
-
 function removeModalItem(productKey, n){
   const items = modalItemsMap.get(productKey) || [];
   items.splice(n,1);
   modalItemsMap.set(productKey, items);
   renderModalItems(productKey);
 }
-
 function submitProduct(e,id){
  e.preventDefault();
  const name=document.getElementById('pName').value.trim(), sellingPrice=Number(document.getElementById('pPrice').value||0), yieldQty=Number(document.getElementById('pYield').value||0);
  if(!name)return toast('Informe o nome do produto.');
  if(yieldQty<1)return toast('O rendimento deve ser pelo menos 1 unidade.');
  if(sellingPrice<0||Number.isNaN(sellingPrice))return toast('Informe um preço válido.');
+ if(sellingPrice>1000000)return toast('Preço de venda muito alto.');
 
  const productKey = id || 'new';
  let items = modalItemsMap.get(productKey) || [];
@@ -490,17 +754,17 @@ function submitProduct(e,id){
  if (items.length === 0) return toast('Adicione pelo menos um ingrediente.');
  modalItemsMap.set(productKey, items);
 
- const data={name,sellingPrice,yield:yieldQty,items:items.map(x=>({...x}))};
+ const data={name,sellingPrice: roundCurrency(sellingPrice),yield:yieldQty,items:items.map(x=>({...x}))};
  if(id){const idx=state.products.findIndex(x=>x.id===id);if(idx>=0)state.products[idx]={...state.products[idx],...data}}
  else state.products.push({id:uid(),...data});
  modalItemsMap.delete(productKey);
  closeModal();saveState();toast(id?'Produto atualizado.':'Produto criado.');
 }
-
 function deleteProduct(id){
  const p=state.products.find(x=>x.id===id);if(!p)return;
- if(!confirm(`Excluir "${p.name}"?`))return;
- state.products=state.products.filter(x=>x.id!==id);saveState();toast('Produto excluído.');
+ confirmAction('Excluir produto', `<p>Excluir "${escapeHtml(p.name)}"?</p>`, () => {
+   state.products=state.products.filter(x=>x.id!==id);saveState();toast('Produto excluído.');
+ });
 }
 function renderProducts(){
  const el=document.getElementById('productsTable');
@@ -511,12 +775,12 @@ function renderProducts(){
  el.innerHTML=`<div class="table-wrap"><table class="table"><thead><tr><th>Produto</th><th>Custo unitário</th><th>Venda</th><th>Margem</th><th>Markup</th><th>Ações</th></tr></thead><tbody>
  ${list.map(p=>{const cost=productUnitCost(p),margin=productMargin(p),markup=productMarkup(p);const markupLabel=markup===Infinity?'∞':`${markup.toFixed(1)}%`;return `<tr><td><strong>${escapeHtml(p.name)}</strong><br><small class="muted">${p.items.length} ingrediente(s) • rendimento ${p.yield}</small></td><td class="money">${money(cost)}</td><td>${money(p.sellingPrice)}</td><td class="${margin>=30?'positive':margin>0?'':'negative'}">${margin.toFixed(1)}%</td><td>${markupLabel}</td><td><button class="btn btn-light btn-sm" onclick='openProductModal(${JSON.stringify(p.id)})' aria-label="Editar ${escapeHtml(p.name)}">✏️</button> <button class="btn btn-danger btn-sm" onclick='deleteProduct(${JSON.stringify(p.id)})' aria-label="Excluir ${escapeHtml(p.name)}">🗑️</button></td></tr>`}).join('')}</tbody></table></div>`;
 }
-
 function debouncedRenderProducts(){
   clearTimeout(productDebounceTimer);
   productDebounceTimer = setTimeout(() => renderProducts(), 250);
 }
 
+/* ========== PRECIFICAÇÃO ========== */
 function renderPricing(){
  const sel=document.getElementById('pricingProduct');if(!sel)return;
  const old=sel.value;
@@ -526,13 +790,13 @@ function renderPricing(){
  if(!p){el.innerHTML='<div class="empty">Crie um produto para começar a precificar.</div>';return}
  const cost=productUnitCost(p),price=num(p.sellingPrice),margin=productMargin(p),markup=productMarkup(p);
  const target=Math.min(99.99,Math.max(0,Number(document.getElementById('targetMargin').value)||0));
- const recommended=target<100?cost/(1-target/100):0;
+ const recommended=target<100?roundCurrency(cost/(1-target/100)):0;
  const markupLabel=markup===Infinity?'∞':`${markup.toFixed(1)}%`;
- el.innerHTML=`<div class="price-box"><div>Custo unitário<b>${money(cost)}</b></div><div>Preço atual<b>${money(price)}</b></div><div>Lucro unitário<b class="${price-cost>=0?'positive':'negative'}">${money(price-cost)}</b></div><div>Margem atual<b>${margin.toFixed(1)}%</b></div><div>Markup<b>${markupLabel}</b></div><div>Preço recomendado<b>${money(recommended)}</b></div></div>
+ el.innerHTML=`<div class="price-box"><div>Custo unitário<b>${money(cost)}</b></div><div>Preço atual<b>${money(price)}</b></div><div>Lucro unitário<b class="${price-cost>=0?'positive':'negative'}">${money(roundCurrency(price-cost))}</b></div><div>Margem atual<b>${margin.toFixed(1)}%</b></div><div>Markup<b>${markupLabel}</b></div><div>Preço recomendado<b>${money(recommended)}</b></div></div>
  <div class="card" style="margin-top:15px;background:#faf5ff;border-color:#ddd6fe"><strong>Como chegamos ao preço recomendado?</strong><p class="muted" style="margin-top:6px">Custo unitário ÷ (1 − margem desejada). Esta versão ainda não inclui taxas, impostos, embalagem, mão de obra ou perdas no cálculo.</p></div>`;
 }
 
-/* ========== Vendas ========== */
+/* ========== VENDAS ========== */
 function prepareSalePage(){
   const productSelect = document.getElementById('saleProduct');
   productSelect.innerHTML = state.products.length ? state.products.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ${money(p.sellingPrice)}</option>`).join('') : '<option value="">Cadastre produtos primeiro</option>';
@@ -540,12 +804,12 @@ function prepareSalePage(){
   renderSaleItems();
   renderSalesHistory();
 }
-
 function addSaleItem(){
   const productId = document.getElementById('saleProduct').value;
   const qty = parseInt(document.getElementById('saleQty').value, 10);
   if(!productId) return toast('Selecione um produto.');
   if(!qty || qty < 1) return toast('Quantidade inválida.');
+  if(qty > 1000) return toast('Quantidade muito alta.');
   const product = state.products.find(p => p.id === productId);
   if(!product) return toast('Produto não encontrado.');
   const existing = pendingSaleItems.find(item => item.productId === productId);
@@ -563,12 +827,10 @@ function addSaleItem(){
   document.getElementById('saleQty').value = 1;
   renderSaleItems();
 }
-
 function removeSaleItem(index){
   pendingSaleItems.splice(index, 1);
   renderSaleItems();
 }
-
 function renderSaleItems(){
   const container = document.getElementById('saleItems');
   if(!pendingSaleItems.length){
@@ -577,8 +839,8 @@ function renderSaleItems(){
     return;
   }
   container.innerHTML = pendingSaleItems.map((item, idx) => {
-    const subtotal = item.quantity * item.unitPrice;
-    const costSubtotal = item.quantity * item.unitCost;
+    const subtotal = roundCurrency(item.quantity * item.unitPrice);
+    const costSubtotal = roundCurrency(item.quantity * item.unitCost);
     return `<div class="list-item">
       <div class="list-main"><strong>${escapeHtml(item.productName)}</strong><small>Qtd: ${item.quantity} • Unit: ${money(item.unitPrice)} • Custo uni: ${money(item.unitCost)}</small></div>
       <div style="text-align:right"><span class="money">${money(subtotal)}</span><br><small class="muted">Custo: ${money(costSubtotal)}</small></div>
@@ -587,13 +849,12 @@ function renderSaleItems(){
   }).join('');
   updateSaleTotals();
 }
-
 function updateSaleTotals(){
-  const totalAmount = pendingSaleItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-  const totalCost = pendingSaleItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
-  const discount = Number(document.getElementById('saleDiscount')?.value) || 0;
-  const finalAmount = Math.max(0, totalAmount - discount);
-  const profit = finalAmount - totalCost;
+  const totalAmount = roundCurrency(pendingSaleItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0));
+  const totalCost = roundCurrency(pendingSaleItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0));
+  const discount = roundCurrency(Number(document.getElementById('saleDiscount')?.value) || 0);
+  const finalAmount = roundCurrency(Math.max(0, totalAmount - discount));
+  const profit = roundCurrency(finalAmount - totalCost);
   document.getElementById('saleTotals').innerHTML = `
     <div><small>Subtotal</small><strong>${money(totalAmount)}</strong></div>
     <div><small>Desconto</small><strong>${money(discount)}</strong></div>
@@ -601,19 +862,18 @@ function updateSaleTotals(){
     <div><small>Lucro estimado</small><strong class="${profit>=0?'positive':'negative'}">${money(profit)}</strong></div>
   `;
 }
-
 function finalizeSale(){
   if(!pendingSaleItems.length) return toast('Adicione ao menos um item.');
-  const totalAmount = pendingSaleItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-  const rawDiscount = Number(document.getElementById('saleDiscount').value) || 0;
+  const totalAmount = roundCurrency(pendingSaleItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0));
+  const rawDiscount = roundCurrency(Number(document.getElementById('saleDiscount').value) || 0);
   const discount = Math.min(Math.max(0, rawDiscount), totalAmount);
   if(rawDiscount>totalAmount) document.getElementById('saleDiscount').value=totalAmount.toFixed(2);
   const payment = document.getElementById('salePayment').value;
   const dateStr = document.getElementById('saleDate').value;
   const date = normalizeDateTimeLocal(dateStr);
 
-  const totalCost = pendingSaleItems.reduce((s, i) => s + i.quantity * i.unitCost, 0);
-  const finalAmount = Math.max(0, totalAmount - discount);
+  const totalCost = roundCurrency(pendingSaleItems.reduce((s, i) => s + i.quantity * i.unitCost, 0));
+  const finalAmount = roundCurrency(Math.max(0, totalAmount - discount));
 
   const sale = {
     id: uid(),
@@ -634,50 +894,74 @@ function finalizeSale(){
   renderSaleItems();
   renderSalesHistory();
 }
-
 function deleteSale(id){
-  if(!confirm('Excluir esta venda?')) return;
-  state.sales = state.sales.filter(s => s.id !== id);
-  saveState();
-  toast('Venda excluída.');
+  confirmAction('Excluir venda', '<p>Excluir esta venda?</p>', () => {
+    state.sales = state.sales.filter(s => s.id !== id);
+    saveState();
+    toast('Venda excluída.');
+  });
 }
-
+function resetSalesPageAndRender(){
+  salesPage = 1;
+  renderSalesHistory();
+}
 function renderSalesHistory(){
   const from = document.getElementById('filterDateFrom')?.value;
   const to = document.getElementById('filterDateTo')?.value;
   const search = (document.getElementById('saleSearch')?.value || '').toLowerCase().trim();
 
-  let sales = [...state.sales].sort((a,b) => new Date(b.date) - new Date(a.date));
-  if(from) sales = sales.filter(s => s.date >= from);
-  if(to) sales = sales.filter(s => s.date <= to + 'T23:59:59');
-  if(search) sales = sales.filter(s => s.items.some(i => i.productName.toLowerCase().includes(search)));
+  salesFiltered = [...state.sales].sort((a,b) => new Date(b.date) - new Date(a.date));
+  if(from) salesFiltered = salesFiltered.filter(s => s.date >= from);
+  if(to) salesFiltered = salesFiltered.filter(s => s.date <= to + 'T23:59:59');
+  if(search) salesFiltered = salesFiltered.filter(s => s.items.some(i => i.productName.toLowerCase().includes(search)));
+
+  const totalPages = Math.ceil(salesFiltered.length / salesPageSize);
+  if (salesPage > totalPages) salesPage = totalPages || 1;
+
+  const start = (salesPage - 1) * salesPageSize;
+  const end = start + salesPageSize;
+  const pageSales = salesFiltered.slice(start, end);
 
   const container = document.getElementById('salesHistoryTable');
-  if(!sales.length){
+  if(!pageSales.length){
     container.innerHTML = '<div class="empty">Nenhuma venda encontrada.</div>';
-    return;
+  } else {
+    container.innerHTML = `<div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Itens</th><th>Total</th><th>Lucro</th><th>Pagamento</th><th>Ações</th></tr></thead><tbody>
+      ${pageSales.map(s => {
+        const profit = roundCurrency(s.finalAmount - s.totalCost);
+        return `<tr>
+          <td>${new Date(s.date).toLocaleString('pt-BR')}</td>
+          <td>${s.items.map(i => `${i.quantity}x ${escapeHtml(i.productName)}`).join(', ')}</td>
+          <td class="money">${money(s.finalAmount)}</td>
+          <td class="${profit>=0?'positive':'negative'}">${money(profit)}</td>
+          <td><span class="badge">${escapeHtml(s.payment)}</span></td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteSale('${s.id}')">🗑️</button></td>
+        </tr>`;
+      }).join('')}
+    </tbody></table></div>`;
   }
-  container.innerHTML = `<div class="table-wrap"><table class="table"><thead><tr><th>Data</th><th>Itens</th><th>Total</th><th>Lucro</th><th>Pagamento</th><th>Ações</th></tr></thead><tbody>
-    ${sales.map(s => {
-      const profit = s.finalAmount - s.totalCost;
-      return `<tr>
-        <td>${new Date(s.date).toLocaleString('pt-BR')}</td>
-        <td>${s.items.map(i => `${i.quantity}x ${escapeHtml(i.productName)}`).join(', ')}</td>
-        <td class="money">${money(s.finalAmount)}</td>
-        <td class="${profit>=0?'positive':'negative'}">${money(profit)}</td>
-        <td><span class="badge">${escapeHtml(s.payment)}</span></td>
-        <td><button class="btn btn-danger btn-sm" onclick="deleteSale('${s.id}')">🗑️</button></td>
-      </tr>`;
-    }).join('')}
-  </tbody></table></div>`;
-}
 
+  const paginationEl = document.getElementById('salesPagination');
+  if (totalPages <= 1) {
+    paginationEl.innerHTML = '';
+  } else {
+    let html = '';
+    html += `<button class="btn btn-light btn-sm" onclick="goToSalesPage(${salesPage-1})" ${salesPage===1?'disabled':''}>← Anterior</button>`;
+    html += `<span style="align-self:center;padding:0 10px">Página ${salesPage} de ${totalPages}</span>`;
+    html += `<button class="btn btn-light btn-sm" onclick="goToSalesPage(${salesPage+1})" ${salesPage===totalPages?'disabled':''}>Próxima →</button>`;
+    paginationEl.innerHTML = html;
+  }
+}
+function goToSalesPage(page){
+  salesPage = page;
+  renderSalesHistory();
+}
 function getSalesToday(){
   const today = localDateKey();
   return state.sales.filter(s => localDateKey(new Date(s.date))===today);
 }
 
-/* ========== Dashboard ========== */
+/* ========== DASHBOARD ========== */
 function renderDashboard(){
  document.getElementById('dashIngredients').textContent=state.ingredients.length;
  document.getElementById('dashProducts').textContent=state.products.length;
@@ -702,8 +986,8 @@ function renderDashboard(){
  }
 
  const todaySales = getSalesToday();
- const totalToday = todaySales.reduce((s, sale) => s + sale.finalAmount, 0);
- const profitToday = todaySales.reduce((s, sale) => s + (sale.finalAmount - sale.totalCost), 0);
+ const totalToday = roundCurrency(todaySales.reduce((s, sale) => s + sale.finalAmount, 0));
+ const profitToday = roundCurrency(todaySales.reduce((s, sale) => s + (sale.finalAmount - sale.totalCost), 0));
  const unitsToday = todaySales.reduce((sum, sale) => sum + sale.items.reduce((is, item) => is + item.quantity, 0), 0);
  const ticketMedio = todaySales.length ? totalToday / todaySales.length : 0;
 
@@ -712,7 +996,7 @@ function renderDashboard(){
  document.getElementById('dashSalesToday').textContent = money(totalToday);
  document.getElementById('dashProfitToday').textContent = money(profitToday);
  document.getElementById('dashUnitsToday').textContent = unitsToday;
- document.getElementById('dashTicket').textContent = money(ticketMedio);
+ document.getElementById('dashTicket').textContent = money(roundCurrency(ticketMedio));
 
  const el=document.getElementById('dashProductList');
  if(!state.products.length){el.innerHTML='<div class="empty">Nenhum produto cadastrado.</div>';return}
@@ -730,30 +1014,13 @@ function renderAll(){
  }
 }
 
-/* ========== Backup / Restauração ========== */
+/* ========== BACKUP / RESTAURAÇÃO ========== */
 function exportBackup(){
  const blob=new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`burgercalc-backup-${new Date().toISOString().slice(0,10)}.json`;
  document.body.appendChild(a);a.click();
  setTimeout(()=>{URL.revokeObjectURL(a.href);document.body.removeChild(a);},1000);
  toast('Backup exportado.');
-}
-function sanitizeIngredient(raw){
- const name=String(raw?.name||'').trim();
- const quantity=Number(raw?.quantity);
- const price=Number(raw?.price);
- const unit=['g','kg','ml','l','un'].includes(raw?.unit)?raw.unit:'un';
- if(!name||!(quantity>0)||Number.isNaN(price)||price<0)return null;
- return {id:isValidId(raw?.id)?raw.id:uid(),name,quantity,unit,price,category:String(raw?.category||'Outros').trim()||'Outros',pricePerUnit:price/quantity};
-}
-function sanitizeProduct(raw,validIngredientIds){
- const name=String(raw?.name||'').trim();
- const sellingPrice=Number(raw?.sellingPrice);
- let yieldQty=Number(raw?.yield);
- if(!(yieldQty>=1))yieldQty=1;
- if(!name||Number.isNaN(sellingPrice)||sellingPrice<0)return null;
- const items=Array.isArray(raw?.items)?raw.items.filter(i=>i&&validIngredientIds.has(i.ingredientId)&&Number(i.quantity)>0).map(i=>({ingredientId:i.ingredientId,quantity:Number(i.quantity)})):[];
- return {id:isValidId(raw?.id)?raw.id:uid(),name,sellingPrice,yield:yieldQty,items};
 }
 function importBackup(e){
  const file=e.target.files[0];if(!file)return;
@@ -763,30 +1030,54 @@ function importBackup(e){
    const data=JSON.parse(reader.result);
    if(!Array.isArray(data.ingredients)||!Array.isArray(data.products))throw new Error('formato inválido');
    if(data.version&&data.version>VERSION){
-    if(!confirm('Este backup parece ter sido feito em uma versão mais nova do BurgerCalc Pro e pode não ser totalmente compatível. Restaurar mesmo assim?'))return;
+    confirmAction('Versão mais nova', 'Este backup parece ter sido feito em uma versão mais nova do BurgerCalc Pro. Restaurar mesmo assim?', () => {
+      processImportData(data);
+    }, 'Restaurar', 'btn-warning');
+    return;
    }
+   processImportData(data);
+  }catch(err){
+   toast('Arquivo de backup inválido.');
+  }
+  e.target.value='';
+ };
+ reader.readAsText(file);
+}
+function processImportData(data){
    const ingredients=data.ingredients.map(sanitizeIngredient).filter(Boolean);
    const validIds=new Set(ingredients.map(i=>i.id));
    const products=data.products.map(p=>sanitizeProduct(p,validIds)).filter(Boolean).filter(p=>p.items.length>0);
    const sales=Array.isArray(data.sales)?data.sales.map(sanitizeSale).filter(Boolean):[];
    const skippedIngredients=data.ingredients.length-ingredients.length;
    const skippedProducts=data.products.length-products.length;
-   const warning=skippedIngredients||skippedProducts?` ${skippedIngredients} ingrediente(s) e ${skippedProducts} produto(s) inválidos serão ignorados.`:'';
-   if(!confirm(`Restaurar este backup substituirá os dados atuais.${warning} Continuar?`))return;
-   state={version:VERSION,ingredients,products,sales};saveState();
-   toast(warning?'Backup restaurado (alguns itens inválidos foram ignorados).':'Backup restaurado.');
-  }catch(err){toast('Arquivo de backup inválido.')}
-  e.target.value='';
- };
- reader.readAsText(file);
+
+   pendingImportData = {version:VERSION, ingredients, products, sales};
+
+   const msg = `
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+       <div><strong>Backup</strong><br>🥩 ${ingredients.length} ingredientes<br>🍔 ${products.length} produtos<br>🧾 ${sales.length} vendas</div>
+       <div><strong>Dados atuais</strong><br>🥩 ${state.ingredients.length} ingredientes<br>🍔 ${state.products.length} produtos<br>🧾 ${state.sales.length} vendas</div>
+     </div>
+     <p class="muted">Ao confirmar, todos os dados atuais serão substituídos. ${skippedIngredients||skippedProducts?`<br><span class="negative">${skippedIngredients} ingrediente(s) e ${skippedProducts} produto(s) inválidos serão ignorados.</span>`:''}</p>
+   `;
+
+   confirmAction('Confirmar restauração', msg, () => {
+     state = pendingImportData;
+     pendingImportData = null;
+     closeModal();
+     saveState();
+     toast('Backup restaurado com sucesso!');
+   }, 'Restaurar', 'btn-primary');
 }
 function clearAllData(){
- if(!confirm('ATENÇÃO: todos os ingredientes, produtos e vendas serão apagados deste navegador. Continuar?'))return;
- state=JSON.parse(JSON.stringify(defaultState));
- pendingSaleItems = [];
- saveState();toast('Dados apagados.');
+ confirmAction('Apagar todos os dados', '<p>ATENÇÃO: todos os ingredientes, produtos e vendas serão apagados deste navegador. Continuar?</p>', () => {
+   state=JSON.parse(JSON.stringify(defaultState));
+   pendingSaleItems = [];
+   saveState();toast('Dados apagados.');
+ }, 'Apagar', 'btn-danger');
 }
 
+// ================== INICIALIZAÇÃO FINAL ==================
 renderAll();
 </script>
 </body>
