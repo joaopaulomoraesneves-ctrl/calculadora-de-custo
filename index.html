@@ -99,6 +99,7 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
       <button class="btn btn-dark btn-export" onclick="exportBackup()">Exportar</button>
       <button class="btn btn-dark btn-restore" onclick="document.getElementById('importFile').click()">Restaurar</button>
       <input id="importFile" type="file" accept=".json" hidden onchange="importBackup(event)">
+      <span id="syncStatus" class="muted" style="color:#cbd5e1"></span>
       <span id="authArea"></span>
     </div>
   </div>
@@ -194,7 +195,7 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
   <input type="date" id="filterDateFrom" onchange="resetSalesPageAndRender()" style="width:auto;flex:1;min-width:130px">
   <span class="muted">até</span>
   <input type="date" id="filterDateTo" onchange="resetSalesPageAndRender()" style="width:auto;flex:1;min-width:130px">
-  <input id="saleSearch" class="search" placeholder="🔎 Buscar produto..." oninput="resetSalesPageAndRender()" style="max-width:200px">
+  <input id="saleSearch" class="search" placeholder="🔎 Buscar produto..." oninput="debouncedRenderSalesHistory()" style="max-width:200px">
 </div>
 <div id="salesHistoryTable"></div>
 <div id="salesPagination" style="display:flex;justify-content:center;gap:8px;margin-top:15px"></div>
@@ -222,22 +223,11 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 <div id="toast" class="toast"></div>
 
 <script>
-// ================== CONFIGURAÇÃO DO SUPABASE (SUBSTITUIR) ==================
+// ================== CONFIGURAÇÃO DO SUPABASE ==================
 const SUPABASE_URL = 'https://wfnplxwodgrzukljvlzp.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_8DQP21Cm6g4Xzjzk0kcWUA_g6ub7oMX';
 let supabase = null;
 let currentUser = null;
-
-// Inicialização do cliente Supabase
-function initSupabase() {
-  if (typeof window.supabase !== 'undefined') {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    return supabase;
-  } else {
-    console.error('Biblioteca do Supabase não carregada.');
-    return null;
-  }
-}
 
 // ================== ESTADO LOCAL ==================
 const STORAGE_KEY='burgercalc_pro_v2';
@@ -248,6 +238,7 @@ let lastFocusedElement = null;
 let modalItemsMap = new Map();
 let debounceTimer = null;
 let productDebounceTimer = null;
+let saleHistoryDebounceTimer = null;
 let pendingSaleItems = [];
 let confirmCallback = null;
 let salesPage = 1;
@@ -274,11 +265,22 @@ function normalizeDateTimeLocal(value){
   const d=new Date(value);
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
-function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)}
+function generateUUID() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+function uid(){ return generateUUID(); }
 function money(v){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0)}
 function num(v){return Number(v)||0}
 function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.remove('show'),2400)}
+function setSyncStatus(text){
+  const el = document.getElementById('syncStatus');
+  if (el) el.textContent = text;
+}
 
 // ================== CONFIRMAÇÃO PERSONALIZADA ==================
 function confirmAction(title, message, onConfirm, confirmText='Confirmar', confirmClass='btn-danger'){
@@ -290,6 +292,11 @@ function confirmAction(title, message, onConfirm, confirmText='Confirmar', confi
       <button class="btn ${confirmClass}" onclick="confirmYes()">${confirmText}</button>
     </div>
   `);
+  // Focar no primeiro botão do modal (Cancelar) para navegação por teclado
+  setTimeout(() => {
+    const firstBtn = document.querySelector('#modalBody .actions .btn');
+    if(firstBtn) firstBtn.focus();
+  }, 0);
 }
 function cancelConfirm(){
   confirmCallback = null;
@@ -299,6 +306,18 @@ function confirmYes(){
   if(confirmCallback) confirmCallback();
   confirmCallback = null;
   closeModal();
+}
+
+// ================== INICIALIZAÇÃO DO SUPABASE ==================
+function initSupabase() {
+  if (typeof window.supabase !== 'undefined') {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    return supabase;
+  } else {
+    console.error('Biblioteca do Supabase não carregada. Verifique sua conexão.');
+    toast('Biblioteca do Supabase não carregada. Funcionando offline.');
+    return null;
+  }
 }
 
 // ================== AUTENTICAÇÃO ==================
@@ -333,12 +352,17 @@ async function handleAuthSubmit(e){
   const password = document.getElementById('authPassword').value;
   if (!email || !password) return toast('Preencha email e senha.');
   if (!supabase) return toast('Supabase não configurado.');
+  setSyncStatus('Sincronizando...');
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return toast(`Erro ao entrar: ${error.message}`);
+  if (error) {
+    setSyncStatus('');
+    return toast(`Erro ao entrar: ${error.message}`);
+  }
   currentUser = data.user;
   closeModal();
   renderAuthArea();
   await syncFromSupabase();
+  setSyncStatus('Sincronizado');
   toast('Login realizado com sucesso!');
 }
 
@@ -357,6 +381,7 @@ async function signOut(){
   await supabase.auth.signOut();
   currentUser = null;
   renderAuthArea();
+  setSyncStatus('');
   toast('Sessão encerrada.');
 }
 
@@ -374,37 +399,50 @@ async function syncFromSupabase(){
     if (prodRes.error) throw prodRes.error;
     if (salesRes.error) throw salesRes.error;
 
-    const ingredients = ingRes.data.map(row => ({
-      id: row.id,
-      name: row.name,
-      quantity: Number(row.quantity),
-      unit: row.unit,
-      price: Number(row.price),
-      category: row.category,
-      pricePerUnit: Number(row.price_per_unit)
-    }));
-    const products = prodRes.data.map(row => ({
-      id: row.id,
-      name: row.name,
-      sellingPrice: Number(row.selling_price),
-      yield: row.yield,
-      items: row.items // jsonb já vem como array
-    }));
-    const sales = salesRes.data.map(row => ({
-      id: row.id,
-      date: row.date,
-      items: row.items,
-      totalAmount: Number(row.total_amount),
-      totalCost: Number(row.total_cost),
-      discount: Number(row.discount),
-      finalAmount: Number(row.final_amount),
-      payment: row.payment
-    }));
+    const remoteHasData = ingRes.data.length > 0 || prodRes.data.length > 0 || salesRes.data.length > 0;
 
-    state = {version:VERSION, ingredients, products, sales};
-    saveLocalState();
-    renderAll();
-    toast('Dados sincronizados com sucesso!');
+    if (remoteHasData) {
+      // Substitui o estado local pelos dados do Supabase
+      const ingredients = ingRes.data.map(row => ({
+        id: row.id,
+        name: row.name,
+        quantity: Number(row.quantity),
+        unit: row.unit,
+        price: Number(row.price),
+        category: row.category,
+        pricePerUnit: Number(row.price_per_unit)
+      }));
+      const products = prodRes.data.map(row => ({
+        id: row.id,
+        name: row.name,
+        sellingPrice: Number(row.selling_price),
+        yield: row.yield,
+        items: row.items
+      }));
+      const sales = salesRes.data.map(row => ({
+        id: row.id,
+        date: row.date,
+        items: row.items,
+        totalAmount: Number(row.total_amount),
+        totalCost: Number(row.total_cost),
+        discount: Number(row.discount),
+        finalAmount: Number(row.final_amount),
+        payment: row.payment
+      }));
+
+      state = {version:VERSION, ingredients, products, sales};
+      saveLocalState();
+      renderAll();
+      toast('Dados carregados do Supabase.');
+    } else {
+      // Supabase vazio: enviar dados locais para o Supabase
+      if (state.ingredients.length || state.products.length || state.sales.length) {
+        await syncStateToSupabase();
+        toast('Dados locais enviados para a nuvem.');
+      } else {
+        toast('Nenhum dado encontrado na nuvem ou localmente.');
+      }
+    }
   } catch (error) {
     console.error('Erro ao sincronizar:', error);
     toast('Falha ao carregar dados do Supabase.');
@@ -415,6 +453,12 @@ async function syncStateToSupabase(){
   if (!supabase || !currentUser) return;
   try {
     const userId = currentUser.id;
+
+    // Antes de upsert, deletar registros que não existem mais localmente
+    await deleteMissingRecords('ingredients', state.ingredients.map(i => i.id), userId);
+    await deleteMissingRecords('products', state.products.map(p => p.id), userId);
+    await deleteMissingRecords('sales', state.sales.map(s => s.id), userId);
+
     const ingredientsPayload = state.ingredients.map(i => ({
       id: i.id,
       user_id: userId,
@@ -459,6 +503,17 @@ async function syncStateToSupabase(){
   }
 }
 
+async function deleteMissingRecords(tableName, localIds, userId) {
+  const { data, error } = await supabase.from(tableName).select('id').eq('user_id', userId);
+  if (error) throw error;
+  const remoteIds = data.map(row => row.id);
+  const idsToDelete = remoteIds.filter(id => !localIds.includes(id));
+  if (idsToDelete.length > 0) {
+    const { error: deleteError } = await supabase.from(tableName).delete().in('id', idsToDelete);
+    if (deleteError) throw deleteError;
+  }
+}
+
 // ================== PERSISTÊNCIA LOCAL ==================
 function saveLocalState(){
   try {
@@ -473,7 +528,8 @@ function saveState(){
   renderAll();
   toast('Dados salvos!');
   if (supabase && currentUser) {
-    syncStateToSupabase();
+    setSyncStatus('Sincronizando...');
+    syncStateToSupabase().finally(() => setSyncStatus('Sincronizado'));
   }
 }
 
@@ -555,22 +611,6 @@ function loadState(){
     return JSON.parse(JSON.stringify(defaultState));
   }
 }
-
-// ================== INICIALIZAÇÃO ==================
-async function initApp(){
-  initSupabase();
-  if (supabase) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      currentUser = user;
-      renderAuthArea();
-      await syncFromSupabase();
-    }
-  }
-  renderAll();
-}
-
-initApp();
 
 // ================== NAVEGAÇÃO ==================
 document.querySelectorAll('.nav-btn').forEach(btn=>btn.addEventListener('click',()=>showPage(btn.dataset.page)));
@@ -905,6 +945,13 @@ function resetSalesPageAndRender(){
   salesPage = 1;
   renderSalesHistory();
 }
+function debouncedRenderSalesHistory(){
+  clearTimeout(saleHistoryDebounceTimer);
+  saleHistoryDebounceTimer = setTimeout(() => {
+    salesPage = 1;
+    renderSalesHistory();
+  }, 300);
+}
 function renderSalesHistory(){
   const from = document.getElementById('filterDateFrom')?.value;
   const to = document.getElementById('filterDateTo')?.value;
@@ -1077,8 +1124,26 @@ function clearAllData(){
  }, 'Apagar', 'btn-danger');
 }
 
-// ================== INICIALIZAÇÃO FINAL ==================
-renderAll();
+// ================== INICIALIZAÇÃO ==================
+async function initApp(){
+  initSupabase();
+  renderAuthArea(); // Mostra botão de login ou dados do usuário
+  if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      currentUser = user;
+      renderAuthArea();
+      setSyncStatus('Sincronizando...');
+      await syncFromSupabase();
+      setSyncStatus('Sincronizado');
+    }
+  }
+  renderAll(); // Renderiza a interface com os dados atuais (locais ou sincronizados)
+}
+
+// Chama initApp depois que todas as funções foram definidas
+initApp();
+
 </script>
 </body>
 </html>
