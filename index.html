@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#111827">
 <title>BurgerCalc Pro 2.1 — Estável + Vendas</title>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --bg:#f4f7fb;--surface:#fff;--surface-2:#f8fafc;--text:#172033;--muted:#64748b;
@@ -25,7 +24,7 @@ button{cursor:pointer}
 .btn{border:0;border-radius:12px;padding:10px 14px;font-weight:700;transition:.2s}
 .btn:hover{transform:translateY(-1px)}.btn-primary{background:var(--primary);color:#fff}.btn-dark{background:#334155;color:#fff}
 .btn-light{background:#fff;border:1px solid var(--line);color:var(--text)}.btn-danger{background:#fee2e2;color:#991b1b}
-.btn-success{background:#dcfce7;color:#166534}.btn-sm{padding:8px 10px;font-size:.86rem}
+.btn-success{background:#dcfce7;color:#166534}.btn-warning{background:#fef3c7;color:#92400e}.btn-sm{padding:8px 10px;font-size:.86rem}
 .layout{max-width:1280px;margin:auto;display:grid;grid-template-columns:230px 1fr;min-height:calc(100vh - 65px)}
 .sidebar{padding:20px 14px;border-right:1px solid var(--line);background:#fff}
 .nav-btn{width:100%;display:flex;align-items:center;gap:10px;padding:12px;border:0;background:transparent;border-radius:12px;text-align:left;color:#475569;font-weight:650;margin-bottom:5px}
@@ -222,6 +221,7 @@ input:focus,select:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #ede9fe}
 </div>
 <div id="toast" class="toast"></div>
 
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script>
 // ================== CONFIGURAÇÃO DO SUPABASE ==================
 const SUPABASE_URL = 'https://wfnplxwodgrzukljvlzp.supabase.co';
@@ -402,7 +402,6 @@ async function syncFromSupabase(){
     const remoteHasData = ingRes.data.length > 0 || prodRes.data.length > 0 || salesRes.data.length > 0;
 
     if (remoteHasData) {
-      // Substitui o estado local pelos dados do Supabase
       const ingredients = ingRes.data.map(row => ({
         id: row.id,
         name: row.name,
@@ -435,7 +434,6 @@ async function syncFromSupabase(){
       renderAll();
       toast('Dados carregados do Supabase.');
     } else {
-      // Supabase vazio: enviar dados locais para o Supabase
       if (state.ingredients.length || state.products.length || state.sales.length) {
         await syncStateToSupabase();
         toast('Dados locais enviados para a nuvem.');
@@ -454,7 +452,6 @@ async function syncStateToSupabase(){
   try {
     const userId = currentUser.id;
 
-    // Antes de upsert, deletar registros que não existem mais localmente
     await deleteMissingRecords('ingredients', state.ingredients.map(i => i.id), userId);
     await deleteMissingRecords('products', state.products.map(p => p.id), userId);
     await deleteMissingRecords('sales', state.sales.map(s => s.id), userId);
@@ -1127,21 +1124,32 @@ function clearAllData(){
 // ================== INICIALIZAÇÃO ==================
 async function initApp(){
   initSupabase();
-  renderAuthArea(); // Mostra botão de login ou dados do usuário
-  if (supabase) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      currentUser = user;
-      renderAuthArea();
-      setSyncStatus('Sincronizando...');
-      await syncFromSupabase();
-      setSyncStatus('Sincronizado');
+  renderAuthArea();
+  try {
+    if (supabase) {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      const user = data?.user;
+      if (user) {
+        currentUser = user;
+        renderAuthArea();
+        setSyncStatus('Sincronizando...');
+        await syncFromSupabase();
+        setSyncStatus('Sincronizado');
+      }
     }
+  } catch (err) {
+    // Se a conexão com o Supabase falhar (offline, chave inválida, projeto
+    // pausado, CORS ao abrir via arquivo local, etc.), isso não pode travar
+    // o app inteiro — seguimos exibindo os dados locais normalmente.
+    console.error('Falha ao conectar com o Supabase:', err);
+    setSyncStatus('');
+    toast('Não foi possível conectar à nuvem. Usando dados locais.');
+  } finally {
+    renderAll();
   }
-  renderAll(); // Renderiza a interface com os dados atuais (locais ou sincronizados)
 }
 
-// Chama initApp depois que todas as funções foram definidas
 initApp();
 
 </script>
